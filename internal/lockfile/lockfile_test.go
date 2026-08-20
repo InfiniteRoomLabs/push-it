@@ -34,3 +34,18 @@ func TestStaleLockIsTakenOver(t *testing.T) {
 		t.Fatalf("stale takeover: ok=%v err=%v", ok, err)
 	}
 }
+
+func TestReleaseDoesNotRemoveForeignLock(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "x.lock")
+	rel, ok, err := Acquire(p, time.Minute)
+	if err != nil || !ok {
+		t.Fatalf("acquire: ok=%v err=%v", ok, err)
+	}
+	if err := os.WriteFile(p, []byte("someone-else"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rel()
+	if _, err := os.Stat(p); err != nil {
+		t.Fatalf("release removed a foreign lock: %v", err)
+	}
+}
