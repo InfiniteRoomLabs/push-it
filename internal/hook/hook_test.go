@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/InfiniteRoomLabs/push-it/internal/config"
+	"github.com/InfiniteRoomLabs/push-it/internal/glow"
 	"github.com/InfiniteRoomLabs/push-it/internal/player"
 )
 
@@ -92,6 +93,24 @@ func TestRunGlowOnlyUsesDefaultDuration(t *testing.T) {
 	}
 }
 
+func TestRunDecodeFailureStillGlows(t *testing.T) {
+	var glowFor atomic.Int64
+	var playCalled atomic.Bool
+	d := Deps{
+		Pick:   func() (string, error) { return "clip.wav", nil },
+		Decode: func(string) (*player.Clip, error) { return nil, errors.New("bad file") },
+		Play:   func(context.Context, *player.Clip) error { playCalled.Store(true); return nil },
+		Glow:   func(_ context.Context, dur time.Duration) error { glowFor.Store(int64(dur)); return nil },
+	}
+	Run(context.Background(), true, false, true, d, func(string, ...any) {})
+	if playCalled.Load() {
+		t.Fatal("play should not run after a decode error")
+	}
+	if got := time.Duration(glowFor.Load()); got != glow.DefaultDuration {
+		t.Fatalf("glow duration after decode error = %v, want DefaultDuration %v", got, glow.DefaultDuration)
+	}
+}
+
 func TestPrePushKillSwitchSkipsSpawn(t *testing.T) {
 	logPath := filepath.Join(t.TempDir(), "push-it.log")
 	err := PrePush(strings.NewReader("refs/heads/main abc refs/heads/main def\n"), env(map[string]string{"NO_PUSH_IT": "1"}), "/nonexistent/exe", logPath)
@@ -115,5 +134,13 @@ func TestPrePushSpawnsDetachedAndReturnsFast(t *testing.T) {
 	}
 	if _, err := os.Stat(logPath); err != nil {
 		t.Fatal("log file should exist")
+	}
+}
+
+func TestPrePushBestEffortWhenLogPathUnwritable(t *testing.T) {
+	t.Setenv("PUSH_IT_TEST_CHILD", "1")
+	logPath := filepath.Join(t.TempDir(), "does-not-exist", "push-it.log")
+	if err := PrePush(strings.NewReader(""), env(nil), os.Args[0], logPath); err != nil {
+		t.Fatalf("PrePush should be best-effort about an unwritable log path, got: %v", err)
 	}
 }

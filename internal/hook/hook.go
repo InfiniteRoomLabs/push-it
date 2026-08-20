@@ -36,14 +36,22 @@ type Deps struct {
 
 // Run performs the celebration. Hue runs concurrently; glow is started with
 // the decoded clip's exact duration just before playback. Errors are logged.
+// logf may be called from multiple goroutines (hue and glow run concurrently
+// with the main flow); Run serialises those calls so callers need not.
 func Run(ctx context.Context, sound, hue, glowOn bool, d Deps, logf func(string, ...any)) {
+	var mu sync.Mutex
+	safeLogf := func(format string, args ...any) {
+		mu.Lock()
+		defer mu.Unlock()
+		logf(format, args...)
+	}
 	var wg sync.WaitGroup
 	if hue {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			if err := d.Hue(ctx); err != nil {
-				logf("hue: %v", err)
+				safeLogf("hue: %v", err)
 			}
 		}()
 	}
@@ -52,7 +60,7 @@ func Run(ctx context.Context, sound, hue, glowOn bool, d Deps, logf func(string,
 		go func() {
 			defer wg.Done()
 			if err := d.Glow(ctx, dur); err != nil {
-				logf("glow: %v", err)
+				safeLogf("glow: %v", err)
 			}
 		}()
 	}
@@ -60,7 +68,7 @@ func Run(ctx context.Context, sound, hue, glowOn bool, d Deps, logf func(string,
 	case sound:
 		path, err := d.Pick()
 		if err != nil {
-			logf("clips: %v", err)
+			safeLogf("clips: %v", err)
 			if glowOn {
 				startGlow(glow.DefaultDuration)
 			}
@@ -68,15 +76,18 @@ func Run(ctx context.Context, sound, hue, glowOn bool, d Deps, logf func(string,
 		}
 		clip, err := d.Decode(path)
 		if err != nil {
-			logf("decode %s: %v", path, err)
+			safeLogf("decode %s: %v", path, err)
+			if glowOn {
+				startGlow(glow.DefaultDuration)
+			}
 			break
 		}
 		if glowOn {
 			startGlow(clip.Duration())
 		}
-		logf("playing %s (%s)", path, clip.Duration().Round(10*time.Millisecond))
+		safeLogf("playing %s (%s)", path, clip.Duration().Round(10*time.Millisecond))
 		if err := d.Play(ctx, clip); err != nil {
-			logf("play: %v", err)
+			safeLogf("play: %v", err)
 		}
 	case glowOn:
 		startGlow(glow.DefaultDuration)
@@ -84,24 +95,29 @@ func Run(ctx context.Context, sound, hue, glowOn bool, d Deps, logf func(string,
 	wg.Wait()
 }
 
-// PrePush is what git invokes. It must return in milliseconds: it drains
-// stdin, honours NO_PUSH_IT, and re-execs exe as a detached "hook --run".
+// PrePush is what git invokes. It must return in milliseconds and must not
+// block a push: it drains stdin, honours NO_PUSH_IT, and re-execs exe as a
+// detached "hook --run". It is best-effort - if the log file can't be
+// opened, the child's stdout/stderr fall back to the null device rather than
+// failing the push, and the process handle is released without checking its
+// error. Only a failure to start the child process is returned.
 func PrePush(stdin io.Reader, getenv func(string) string, exe, logPath string) error {
 	_, _ = io.Copy(io.Discard, stdin)
 	if getenv("NO_PUSH_IT") == "1" {
 		return nil
 	}
-	logFile, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
-	if err != nil {
-		return err
-	}
-	defer logFile.Close()
 	cmd := exec.Command(exe, "hook", "--run")
-	cmd.Stdout = logFile
-	cmd.Stderr = logFile
+	if logFile, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600); err == nil {
+		defer logFile.Close()
+		cmd.Stdout = logFile
+		cmd.Stderr = logFile
+	}
+	// else: leave Stdout/Stderr nil - exec redirects the child to the null
+	// device rather than failing the push over a log file we can't open.
 	detach(cmd)
 	if err := cmd.Start(); err != nil {
 		return err
 	}
-	return cmd.Process.Release()
+	_ = cmd.Process.Release()
+	return nil
 }
