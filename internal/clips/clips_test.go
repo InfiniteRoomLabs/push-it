@@ -20,12 +20,18 @@ func TestListFiltersAndSorts(t *testing.T) {
 	touch(t, filepath.Join(dir, "a.WAV"))
 	touch(t, filepath.Join(dir, "notes.txt"))
 	touch(t, filepath.Join(dir, "candidates.json"))
+	if err := os.Mkdir(filepath.Join(dir, "nested.mp3"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	got, err := List(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(got) != 2 || filepath.Base(got[0]) != "a.WAV" || filepath.Base(got[1]) != "b.mp3" {
 		t.Fatalf("List = %v", got)
+	}
+	if !filepath.IsAbs(got[0]) {
+		t.Fatalf("List entry not absolute: %q", got[0])
 	}
 }
 
@@ -40,10 +46,54 @@ func TestPickIsDeterministicWithSeed(t *testing.T) {
 	files := []string{"a", "b", "c", "d"}
 	r1 := rand.New(rand.NewPCG(1, 2))
 	r2 := rand.New(rand.NewPCG(1, 2))
-	p1, _ := Pick(files, r1)
-	p2, _ := Pick(files, r2)
+	p1, err := Pick(files, r1)
+	if err != nil {
+		t.Fatalf("Pick() error = %v", err)
+	}
+	p2, err := Pick(files, r2)
+	if err != nil {
+		t.Fatalf("Pick() error = %v", err)
+	}
 	if p1 != p2 {
 		t.Fatalf("same seed, different picks: %q %q", p1, p2)
+	}
+}
+
+// TestPickConsultsRNG pins the exact draw sequence for a fixed seed. A Pick
+// that ignores r (e.g. always returning files[0]) would produce a constant
+// sequence and fail this after the first divergent draw.
+func TestPickConsultsRNG(t *testing.T) {
+	files := []string{"a", "b", "c", "d"}
+	r := rand.New(rand.NewPCG(1, 2))
+	want := []string{"a", "a", "a", "c", "a", "a", "b", "c"}
+	for i, w := range want {
+		got, err := Pick(files, r)
+		if err != nil {
+			t.Fatalf("Pick() call %d error = %v", i, err)
+		}
+		if got != w {
+			t.Fatalf("Pick() call %d = %q, want %q", i, got, w)
+		}
+	}
+}
+
+// TestPickUniformity is a smoke test that every candidate can be drawn, not
+// just a single fixed one.
+func TestPickUniformity(t *testing.T) {
+	files := []string{"a", "b", "c", "d"}
+	r := rand.New(rand.NewPCG(1, 2))
+	seen := make(map[string]bool, len(files))
+	for i := 0; i < 200; i++ {
+		got, err := Pick(files, r)
+		if err != nil {
+			t.Fatalf("Pick() call %d error = %v", i, err)
+		}
+		seen[got] = true
+	}
+	for _, f := range files {
+		if !seen[f] {
+			t.Fatalf("file %q never picked in 200 draws", f)
+		}
 	}
 }
 
