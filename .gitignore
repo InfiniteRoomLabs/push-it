@@ -1,6 +1,7 @@
-bin/
+/bin/
 dist/
 *.shell-extension.zip
+internal/glow/macos/bin/glow-macos
 .claude/
 .codex/
 .gemini/

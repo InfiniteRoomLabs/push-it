@@ -18,3 +18,6 @@ run = "go build -o bin/push-it ./cmd/push-it"
 
 [tasks."glow:gnome:test"]
 run = "gjs -m internal/glow/gnome/tests/run.js"
+
+[tasks."glow:macos:build"]
+run = "sh internal/glow/macos/build.sh"
