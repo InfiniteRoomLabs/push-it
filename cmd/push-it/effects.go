@@ -152,7 +152,7 @@ func cmdHook(args []string, stdin io.Reader, _, stderr io.Writer) int {
 		hook.Run(ctx, s, h, g, deps(cfg), logger.Printf)
 		return 0
 	}
-	if fs.NArg() != 1 || fs.Arg(0) != "pre-push" {
+	if fs.NArg() < 1 || fs.Arg(0) != "pre-push" {
 		fmt.Fprintln(stderr, "usage: push-it hook pre-push")
 		return 0
 	}

@@ -73,6 +73,15 @@ func glowDefault() bool {
 	}
 }
 
+// short returns the first 12 bytes of s for display, or s itself if it is
+// already shorter (e.g. a hand-edited pin) so we never panic slicing it.
+func short(s string) string {
+	if len(s) < 12 {
+		return s
+	}
+	return s[:12]
+}
+
 func cmdInstall(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("install", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -89,17 +98,34 @@ func cmdInstall(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 1
 	}
 	p := prompter{in: bufio.NewScanner(stdin), out: stdout}
-	wantSound, wantHue, wantGlow := *sound || *all, *hueOn || *all, *glowOn || *all
-	if !*sound && !*hueOn && !*glowOn && !*all {
-		if *yes {
-			wantSound, wantHue, wantGlow = true, false, glowDefault()
-		} else {
-			wantSound = p.yesNo("Play a clip on push?", true)
-			wantHue = p.yesNo("Rainbow a Philips Hue light on push?", false)
-			wantGlow = p.yesNo("Glow the screen edges on push?", glowDefault())
+	explicit := *sound || *hueOn || *glowOn
+	var wantSound, wantHue, wantGlow bool
+	switch {
+	case *all:
+		wantSound, wantHue, wantGlow = true, true, true
+		cfg.Sound.Enabled, cfg.Hue.Enabled, cfg.Glow.Enabled = true, true, true
+	case explicit:
+		// Flags are additive: touch only the components explicitly named on
+		// the command line and leave the rest as loaded from disk.
+		wantSound, wantHue, wantGlow = *sound, *hueOn, *glowOn
+		if *sound {
+			cfg.Sound.Enabled = true
 		}
+		if *hueOn {
+			cfg.Hue.Enabled = true
+		}
+		if *glowOn {
+			cfg.Glow.Enabled = true
+		}
+	case *yes:
+		wantSound, wantHue, wantGlow = true, false, glowDefault()
+		cfg.Sound.Enabled, cfg.Hue.Enabled, cfg.Glow.Enabled = wantSound, wantHue, wantGlow
+	default:
+		wantSound = p.yesNo("Play a clip on push?", true)
+		wantHue = p.yesNo("Rainbow a Philips Hue light on push?", false)
+		wantGlow = p.yesNo("Glow the screen edges on push?", glowDefault())
+		cfg.Sound.Enabled, cfg.Hue.Enabled, cfg.Glow.Enabled = wantSound, wantHue, wantGlow
 	}
-	cfg.Sound.Enabled, cfg.Hue.Enabled, cfg.Glow.Enabled = wantSound, wantHue, wantGlow
 
 	if wantHue {
 		if !*yes || cfg.Hue.Bridge == "" || cfg.Hue.Key == "" {
@@ -113,7 +139,7 @@ func cmdInstall(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		fp, err := hue.Fingerprint(ctx, cfg.Hue.Bridge)
 		if err == nil {
 			if cfg.Hue.CertSHA256 != "" && cfg.Hue.CertSHA256 != fp {
-				fmt.Fprintf(stdout, "hue: bridge certificate changed (was %s, now %s)\n", cfg.Hue.CertSHA256[:12], fp[:12])
+				fmt.Fprintf(stdout, "hue: bridge certificate changed (was %s, now %s)\n", short(cfg.Hue.CertSHA256), short(fp))
 				if !*yes && !p.yesNo("Trust the new certificate?", false) {
 					cancel()
 					fmt.Fprintln(stderr, "push-it: keeping the old pin; hue will fail until you re-run install --hue")
@@ -121,7 +147,7 @@ func cmdInstall(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 				}
 			}
 			cfg.Hue.CertSHA256 = fp
-			fmt.Fprintf(stdout, "hue: pinned bridge certificate %s...\n", fp[:12])
+			fmt.Fprintf(stdout, "hue: pinned bridge certificate %s...\n", short(fp))
 			err = hue.New(cfg.Hue.Bridge, cfg.Hue.Key, cfg.Hue.Light, fp).Ping(ctx)
 		}
 		cancel()
@@ -151,10 +177,13 @@ func cmdInstall(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		}
 	}
 	if err := cfg.Save(); err != nil {
-		fmt.Fprintf(stderr, "push-it: %v\n", err)
+		_ = installer.UnwireHook(installer.CLIGit{}, &cfg.InstallState)
+		_ = glow.Uninstall(&cfg.InstallState)
+		fmt.Fprintf(stderr, "push-it: could not save config (%v); install rolled back\n", err)
 		return 1
 	}
 	fmt.Fprintf(stdout, "installed. config: %s\n", cfg.Dir())
+	fmt.Fprintf(stdout, "enabled: sound=%v hue=%v glow=%v\n", cfg.Sound.Enabled, cfg.Hue.Enabled, cfg.Glow.Enabled)
 	if files, _ := clips.List(cfg.Sound.ClipsDir); wantSound && len(files) == 0 {
 		fmt.Fprintf(stdout, "no clips yet  -  drop .mp3/.wav files into %s\nsee docs/make-your-own-clips.md to cut your own.\n", cfg.Sound.ClipsDir)
 	}
