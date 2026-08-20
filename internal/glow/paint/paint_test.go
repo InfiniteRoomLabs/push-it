@@ -1,11 +1,10 @@
 package paint
 
 import (
+	"bytes"
 	"math"
 	"testing"
 	"time"
-
-	"github.com/InfiniteRoomLabs/push-it/internal/glow"
 )
 
 func TestPerimeterPosWalksClockwise(t *testing.T) {
@@ -35,7 +34,7 @@ func TestInFrame(t *testing.T) {
 	if InFrame(w/2, h/2, w, h) {
 		t.Fatal("InFrame at centre must be false")
 	}
-	if InFrame(glow.FrameThickness, glow.FrameThickness, w, h) {
+	if InFrame(FrameThickness, FrameThickness, w, h) {
 		t.Fatal("InFrame at (t, t) must be false")
 	}
 }
@@ -57,26 +56,26 @@ func TestHueAtRotatesOncePerPeriod(t *testing.T) {
 	if HueAt(0, 0) != 0 {
 		t.Fatal("hue at origin, t=0 must be 0")
 	}
-	half := HueAt(0, glow.RotationPeriod/2)
+	half := HueAt(0, RotationPeriod/2)
 	if math.Abs(half-0.5) > 1e-9 {
 		t.Fatalf("half period should advance hue by 0.5, got %v", half)
 	}
-	full := HueAt(0.25, glow.RotationPeriod)
+	full := HueAt(0.25, RotationPeriod)
 	if math.Abs(full-0.25) > 1e-9 {
 		t.Fatalf("full period must wrap to the same hue, got %v", full)
 	}
 }
 
 func TestOpacityAtStaysInBounds(t *testing.T) {
-	if o := OpacityAt(0); math.Abs(o-(glow.MinOpacity+glow.MaxOpacity)/2) > 1e-9 {
+	if o := OpacityAt(0); math.Abs(o-(MinOpacity+MaxOpacity)/2) > 1e-9 {
 		t.Fatalf("t=0 should be the midpoint, got %v", o)
 	}
-	if o := OpacityAt(glow.PulsePeriod / 4); math.Abs(o-glow.MaxOpacity) > 1e-9 {
+	if o := OpacityAt(PulsePeriod / 4); math.Abs(o-MaxOpacity) > 1e-9 {
 		t.Fatalf("quarter period should be max, got %v", o)
 	}
 	for ms := 0; ms < 2000; ms += 7 {
 		o := OpacityAt(time.Duration(ms) * time.Millisecond)
-		if o < glow.MinOpacity-1e-9 || o > glow.MaxOpacity+1e-9 {
+		if o < MinOpacity-1e-9 || o > MaxOpacity+1e-9 {
 			t.Fatalf("opacity out of bounds at %dms: %v", ms, o)
 		}
 	}
@@ -103,7 +102,7 @@ func TestRenderFrameOnly(t *testing.T) {
 	if alpha(0, 0) == 0 || alpha(w-1, h-1) == 0 || alpha(w/2, 0) == 0 || alpha(0, h/2) == 0 {
 		t.Fatal("frame pixels must be opaque-ish")
 	}
-	if alpha(w/2, h/2) != 0 || alpha(glow.FrameThickness, glow.FrameThickness) != 0 {
+	if alpha(w/2, h/2) != 0 || alpha(FrameThickness, FrameThickness) != 0 {
 		t.Fatal("interior must be transparent")
 	}
 	// premultiplied: no channel may exceed alpha
@@ -120,7 +119,7 @@ func TestRenderAdvancesWithTime(t *testing.T) {
 	a := make([]byte, w*h*4)
 	b := make([]byte, w*h*4)
 	Render(a, w, h, 0)
-	Render(b, w, h, glow.RotationPeriod/2)
+	Render(b, w, h, RotationPeriod/2)
 	same := true
 	for i := range a {
 		if a[i] != b[i] {
@@ -140,4 +139,20 @@ func TestRenderRejectsShortBuffer(t *testing.T) {
 		}
 	}()
 	Render(make([]byte, 10), 64, 48, 0)
+}
+
+func TestRenderBandMatchesRender(t *testing.T) {
+	sizes := []struct{ w, h int }{{64, 48}, {101, 37}, {20, 20}}
+	elapsed := []time.Duration{0, 137 * time.Millisecond}
+	for _, s := range sizes {
+		for _, e := range elapsed {
+			want := make([]byte, s.w*s.h*4)
+			Render(want, s.w, s.h, e)
+			got := make([]byte, s.w*s.h*4)
+			RenderBand(got, s.w, s.h, e)
+			if !bytes.Equal(got, want) {
+				t.Fatalf("RenderBand != Render for %dx%d at %v", s.w, s.h, e)
+			}
+		}
+	}
 }

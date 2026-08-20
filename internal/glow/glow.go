@@ -1,8 +1,8 @@
 // Package glow draws an animated rainbow frame around the screen.
 //
 // The rendering is platform-specific and lives in build-tagged files that
-// overwrite Run/Install/Uninstall in init(). The parameters below are the
-// single source of truth; the JS and Swift renderers mirror them verbatim.
+// overwrite Run/Install/Uninstall in init(). The animation parameters live
+// in package paint; the JS and Swift renderers mirror them verbatim.
 package glow
 
 import (
@@ -10,14 +10,18 @@ import (
 	"time"
 
 	"github.com/InfiniteRoomLabs/push-it/internal/config"
+	"github.com/InfiniteRoomLabs/push-it/internal/glow/paint"
 )
 
+// The animation parameters are defined in package paint (the leaf package,
+// so that platform backends in this package can use the renderer) and
+// re-exported here under the same names.
 const (
-	FrameThickness  = 14                     // px
-	RotationPeriod  = 2 * time.Second        // one full trip of the rainbow around the frame
-	PulsePeriod     = 600 * time.Millisecond // opacity pulse
-	MinOpacity      = 0.55
-	MaxOpacity      = 1.0
+	FrameThickness  = paint.FrameThickness
+	RotationPeriod  = paint.RotationPeriod
+	PulsePeriod     = paint.PulsePeriod
+	MinOpacity      = paint.MinOpacity
+	MaxOpacity      = paint.MaxOpacity
 	DefaultDuration = 3500 * time.Millisecond
 )
 

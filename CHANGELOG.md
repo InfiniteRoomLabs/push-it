@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Repository published: public GitHub (`InfiniteRoomLabs/push-it`) with a private mirror; CI runs lint, a no-cgo cross-compile matrix, and tests on Linux, macOS, and Windows on every push.
+- The glow animation parameters (`FrameThickness`, `RotationPeriod`, `PulsePeriod`, `MinOpacity`, `MaxOpacity`) now live in `internal/glow/paint` and are re-exported by `internal/glow` under the same names, so an in-process backend inside package `glow` can call the renderer without an import cycle.
 
 ### Added
 
@@ -27,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `internal/installer`: reversible `core.hooksPath` / `pre-push` wiring with marker blocks; uninstall restores the user's hook byte-for-byte; refuses to append to an existing `pre-push` that isn't a shell script rather than risk breaking every push, and always leaves the hook file executable.
 - CLI: `play`, `hue`, `glow`, `hook pre-push`, `clips cut`, `clips review`, `install` (interactive or flagged), `uninstall`, `doctor`; `install --hue --yes` never auto-trusts a changed bridge certificate - it refuses non-interactively and keeps the old pin - and skips Hue entirely, rather than prompting or saving a broken config, when the bridge or key is still unset; the Hue API key prompt never echoes the stored/env value.
 - Docs: install, make-your-own-clips, hue, glow, migrating; `tools/clipper/transcribe.py`; GitHub Actions CI (lint, no-cgo cross-compile, tests on Linux/macOS/Windows).
-- `internal/glow/paint`: reference renderer for the rainbow frame (perimeter position, hue rotation, opacity pulse, premultiplied BGRA); `glow.Install` now returns a user-facing note.
+- `internal/glow/paint`: reference renderer for the rainbow frame (perimeter position, hue rotation, opacity pulse, premultiplied BGRA), plus `RenderBand`, which redraws only the frame band each tick and leaves the permanently transparent interior alone; `glow.Install` now returns a user-facing note.
 - GNOME Shell extension `pushit-glow@infiniteroomlabs.com` (embedded in the binary): D-Bus `Start(seconds)`/`Stop`, click-through rainbow frame on the primary monitor; gjs unit tests for the shared math.
 - Linux glow backend: `push-it install --glow` extracts and enables the GNOME extension; the hook triggers it over D-Bus with the clip's exact duration; refuses clearly on non-GNOME sessions.
+- Windows glow backend: in-process click-through layered window rendered by the shared `paint` package (compiles and vets in CI; visual verification pending).

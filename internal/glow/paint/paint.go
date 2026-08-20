@@ -7,14 +7,25 @@ package paint
 import (
 	"math"
 	"time"
+)
 
-	"github.com/InfiniteRoomLabs/push-it/internal/glow"
+// Animation parameters. These are the single source of truth for every
+// renderer; package glow re-exports them under the same names, and the JS
+// and Swift renderers mirror them verbatim. They live here, in the leaf
+// package, so the Windows backend inside package glow can call this
+// renderer without an import cycle.
+const (
+	FrameThickness = 14                     // px
+	RotationPeriod = 2 * time.Second        // one full trip of the rainbow around the frame
+	PulsePeriod    = 600 * time.Millisecond // opacity pulse
+	MinOpacity     = 0.55
+	MaxOpacity     = 1.0
 )
 
 // InFrame reports whether the pixel at (x, y) lies within the frame band of
-// thickness glow.FrameThickness around a w x h screen.
+// thickness FrameThickness around a w x h screen.
 func InFrame(x, y, w, h int) bool {
-	t := glow.FrameThickness
+	t := FrameThickness
 	return x < t || x >= w-t || y < t || y >= h-t
 }
 
@@ -26,7 +37,7 @@ func InFrame(x, y, w, h int) bool {
 // order.
 func PerimeterPos(x, y, w, h int) float64 {
 	p := float64(2 * (w + h))
-	t := glow.FrameThickness
+	t := FrameThickness
 	switch {
 	case y < t:
 		return float64(x) / p
@@ -46,14 +57,14 @@ func PerimeterPos(x, y, w, h int) float64 {
 
 // HueAt is the hue in [0,1) at perimeter position p after elapsed time.
 func HueAt(p float64, elapsed time.Duration) float64 {
-	h := p + elapsed.Seconds()/glow.RotationPeriod.Seconds()
+	h := p + elapsed.Seconds()/RotationPeriod.Seconds()
 	return h - math.Floor(h)
 }
 
 // OpacityAt pulses sinusoidally between MinOpacity and MaxOpacity.
 func OpacityAt(elapsed time.Duration) float64 {
-	phase := 2 * math.Pi * elapsed.Seconds() / glow.PulsePeriod.Seconds()
-	return glow.MinOpacity + (glow.MaxOpacity-glow.MinOpacity)*(0.5+0.5*math.Sin(phase))
+	phase := 2 * math.Pi * elapsed.Seconds() / PulsePeriod.Seconds()
+	return MinOpacity + (MaxOpacity-MinOpacity)*(0.5+0.5*math.Sin(phase))
 }
 
 // HSVToRGB converts a fully saturated, full-value hue to 8-bit RGB.
@@ -95,11 +106,44 @@ func Render(buf []byte, w, h int, elapsed time.Duration) {
 				buf[i], buf[i+1], buf[i+2], buf[i+3] = 0, 0, 0, 0
 				continue
 			}
-			r, g, b := HSVToRGB(HueAt(PerimeterPos(x, y, w, h), elapsed))
-			buf[i] = uint8(math.Round(float64(b) * alpha))
-			buf[i+1] = uint8(math.Round(float64(g) * alpha))
-			buf[i+2] = uint8(math.Round(float64(r) * alpha))
-			buf[i+3] = a8
+			setPixel(buf, i, x, y, w, h, elapsed, alpha, a8)
 		}
 	}
+}
+
+// RenderBand writes only the frame band - the four strips of thickness
+// FrameThickness - and never touches the interior. For any buffer the
+// caller zeroed once before the first call, the result is byte-for-byte
+// identical to Render, at a fraction of the per-frame cost (the interior of
+// the frame stays transparent for the whole animation). A buffer that is too
+// small is left untouched.
+func RenderBand(buf []byte, w, h int, elapsed time.Duration) {
+	if len(buf) < w*h*4 {
+		return
+	}
+	t := FrameThickness
+	alpha := OpacityAt(elapsed)
+	a8 := uint8(math.Round(255 * alpha))
+	span := func(y, x0, x1 int) {
+		for x := x0; x < x1; x++ {
+			setPixel(buf, (y*w+x)*4, x, y, w, h, elapsed, alpha, a8)
+		}
+	}
+	for y := 0; y < h; y++ {
+		if y < t || y >= h-t { // full-width top and bottom strips
+			span(y, 0, w)
+			continue
+		}
+		span(y, 0, min(t, w))   // left strip
+		span(y, max(t, w-t), w) // right strip
+	}
+}
+
+// setPixel writes one premultiplied BGRA frame pixel at byte offset i.
+func setPixel(buf []byte, i, x, y, w, h int, elapsed time.Duration, alpha float64, a8 uint8) {
+	r, g, b := HSVToRGB(HueAt(PerimeterPos(x, y, w, h), elapsed))
+	buf[i] = uint8(math.Round(float64(b) * alpha))
+	buf[i+1] = uint8(math.Round(float64(g) * alpha))
+	buf[i+2] = uint8(math.Round(float64(r) * alpha))
+	buf[i+3] = a8
 }
