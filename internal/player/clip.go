@@ -25,6 +25,9 @@ func (c *Clip) Duration() time.Duration {
 // clip's bounds and aligned to whole frames. The PCM is copied.
 func (c *Clip) Slice(from, to time.Duration) *Clip {
 	fs := c.frameSize()
+	if fs == 0 {
+		return &Clip{PCM: nil, SampleRate: c.SampleRate, Channels: c.Channels}
+	}
 	total := len(c.PCM) / fs
 	toFrame := func(d time.Duration) int {
 		n := int(d.Seconds() * float64(c.SampleRate))

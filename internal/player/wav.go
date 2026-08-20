@@ -37,6 +37,9 @@ func DecodeWAV(r io.Reader) (*Clip, error) {
 			if format != 1 || bits != 16 {
 				return nil, fmt.Errorf("wav: unsupported format tag %d / %d-bit (need 16-bit PCM)", format, bits)
 			}
+			if channels == 0 {
+				return nil, errors.New("wav: zero channels")
+			}
 		case "data":
 			if rate == 0 {
 				return nil, errors.New("wav: data chunk before fmt chunk")

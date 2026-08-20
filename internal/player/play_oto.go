@@ -54,6 +54,7 @@ func play(ctx context.Context, c *Clip, volume float64) error {
 	for p.IsPlaying() {
 		select {
 		case <-ctx.Done():
+			p.Pause()
 			return ctx.Err()
 		case <-tick.C:
 		}

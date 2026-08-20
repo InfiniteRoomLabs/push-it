@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -60,6 +61,17 @@ func TestDecodeWAVRejectsGarbage(t *testing.T) {
 	}
 }
 
+func TestDecodeWAVRejectsZeroChannels(t *testing.T) {
+	c := &Clip{PCM: []byte{0, 0}, SampleRate: 8000, Channels: 0}
+	var buf bytes.Buffer
+	if err := EncodeWAV(&buf, c); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := DecodeWAV(&buf); err == nil {
+		t.Fatal("expected error for zero channels")
+	}
+}
+
 func TestSlice(t *testing.T) {
 	c := sine(1000, time.Second, 10)
 	s := c.Slice(250*time.Millisecond, 750*time.Millisecond)
@@ -71,6 +83,13 @@ func TestSlice(t *testing.T) {
 	}
 	if c.Slice(-time.Second, 10*time.Second).Duration() != time.Second {
 		t.Fatal("slice should clamp to clip bounds")
+	}
+}
+
+func TestSliceZeroChannelsDoesNotPanic(t *testing.T) {
+	s := (&Clip{}).Slice(0, time.Second)
+	if s.Duration() != 0 {
+		t.Fatalf("Duration = %v, want 0", s.Duration())
 	}
 }
 
@@ -101,7 +120,13 @@ func TestDecodeByExtension(t *testing.T) {
 	if _, err := Decode(p); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Decode(filepath.Join(dir, "x.ogg")); err == nil {
+	oggPath := filepath.Join(dir, "x.ogg")
+	_ = os.WriteFile(oggPath, []byte("not actually ogg"), 0o644)
+	_, err := Decode(oggPath)
+	if err == nil {
 		t.Fatal("expected unsupported extension error")
+	}
+	if !strings.Contains(err.Error(), "unsupported file type") {
+		t.Fatalf("error = %q, want it to contain %q", err.Error(), "unsupported file type")
 	}
 }
