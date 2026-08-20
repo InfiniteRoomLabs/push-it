@@ -1,4 +1,4 @@
-# push-it — design spec
+# push-it  -  design spec
 
 Date: 2026-08-20
 Status: approved for planning
@@ -7,7 +7,7 @@ Status: approved for planning
 
 `push-it` is a `git pre-push` celebration. When you push, it plays a short "push it" sound clip, runs a rainbow burst on a Philips Hue light, and flashes an animated rainbow frame around the edge of your screen for exactly as long as the clip plays. Each of the three effects is an independent, optional component.
 
-It replaces the current ad-hoc setup (a bash hook with an inline Python heredoc, a separate Hue script, and a clips directory with a JSON manifest) with one cross-platform Go binary, a proper installer/uninstaller, tests, CI, semver releases, and documentation — including how to cut your own clips from a track you own.
+It replaces the current ad-hoc setup (a bash hook with an inline Python heredoc, a separate Hue script, and a clips directory with a JSON manifest) with one cross-platform Go binary, a proper installer/uninstaller, tests, CI, semver releases, and documentation  -  including how to cut your own clips from a track you own.
 
 ## Non-goals
 
@@ -33,20 +33,20 @@ One Go module (`github.com/InfiniteRoomLabs/push-it`), one binary `push-it`, std
 cmd/push-it/                       main: subcommand dispatch via stdlib flag
 internal/config/                   load/save ~/.config/push-it/config.json (0600); env overrides
 internal/clips/                    list + pick a random *.mp3 | *.wav from the clips dir
-internal/player/                   decode (mp3 via go-mp3, wav by hand) → oto; returns duration before playing
-internal/hue/                      save light state → hue-wheel burst → restore (net/http + encoding/json)
+internal/player/                   decode (mp3 via go-mp3, wav by hand) -> oto; returns duration before playing
+internal/hue/                      save light state -> hue-wheel burst -> restore (net/http + encoding/json)
 internal/glow/                     Run(ctx, duration): build-tagged backends
 internal/glow/paint/               pure-Go frame renderer (shared params, used by the Windows backend; unit-tested)
-internal/hook/                     pre-push orchestration: sound ‖ hue ‖ glow, detached from git
+internal/hook/                     pre-push orchestration: sound || hue || glow, detached from git
 internal/installer/                component selection, hook wiring, extension/helper install, uninstall
 glow/gnome/pushit-glow@infiniteroomlabs.com/   GNOME Shell extension (GNOME 45+ ESM); embedded via go:embed
 glow/gnome/tests/                  gjs unit tests for the extension's pure math module
 glow/macos/                        Swift helper source; built by CI into a universal binary; embedded via go:embed (darwin only)
 tools/clipper/                     transcribe.py (uv PEP 723; the only Python, dev-time only)
-internal/clipper/                  phrase grouping + WAV cutting + review loop (`push-it clips …`)
-docs/                              install.md · make-your-own-clips.md · hue.md · glow.md · migrating.md
-install.sh                         POSIX sh bootstrap: detect OS/arch → download release → run `push-it install "$@"`
-.github/workflows/                 ci.yml · release.yml
+internal/clipper/                  phrase grouping + WAV cutting + review loop (`push-it clips ...`)
+docs/                              install.md / make-your-own-clips.md / hue.md / glow.md / migrating.md
+install.sh                         POSIX sh bootstrap: detect OS/arch -> download release -> run `push-it install "$@"`
+.github/workflows/                 ci.yml / release.yml
 .goreleaser.yaml                   6 binaries, extension zip, checksums
 mise.toml                          pinned dev toolchain (go, goreleaser, staticcheck) and tasks
 ```
@@ -62,17 +62,17 @@ mise.toml                          pinned dev toolchain (go, goreleaser, staticc
 | `push-it install [--sound] [--hue] [--glow] [--all] [--yes]` | Install selected components. With no component flags: interactive yes/no per component. |
 | `push-it uninstall [--yes]` | Reverse exactly what install did. |
 | `push-it doctor` | Report: config path, enabled components, clips found, audio backend OK, Hue reachable, glow backend available. |
-| `push-it clips cut …` / `push-it clips review …` | Clip toolkit; see below. |
+| `push-it clips cut ...` / `push-it clips review ...` | Clip toolkit; see below. |
 | `push-it version` | Semver + commit. |
 
 All subcommands are stdlib `flag` subcommand sets; no CLI framework.
 
 ### Kill switches (environment)
 
-- `NO_PUSH_IT=1` — disable everything.
-- `NO_RAINBOW=1` — skip Hue.
-- `NO_GLOW=1` — skip glow.
-- `NO_SOUND=1` — skip sound.
+- `NO_PUSH_IT=1`  -  disable everything.
+- `NO_RAINBOW=1`  -  skip Hue.
+- `NO_GLOW=1`  -  skip glow.
+- `NO_SOUND=1`  -  skip sound.
 
 ### Config
 
@@ -106,16 +106,16 @@ Environment overrides for the Hue fields (`PUSH_IT_HUE_BRIDGE`, `PUSH_IT_HUE_KEY
 
 ### Hue
 
-Port of the existing script: save `on/bri/hue/sat`, set full saturation/brightness at hue 0, step through six hue-wheel values ~0.45 s apart with short transitions, pause, restore saved state. HTTP timeouts of 2 s per call; any failure logs and exits 0. Same lock-file guard (overlapping bursts would fight over save/restore). Bridge TLS: the Hue bridge uses a self-signed cert; the client accepts it only for the configured bridge host, and the docs say so.
+Port of the existing script: save `on/bri/hue/sat`, set full saturation/brightness at hue 0, step through six hue-wheel values ~0.45 s apart with short transitions, pause, restore saved state. HTTP timeouts of 2 s per call; any failure logs and exits 0. Same lock-file guard (overlapping bursts would fight over save/restore). Bridge TLS: Hue bridges present certificates no public CA signs, so the client pins the bridge certificate trust-on-first-use  -  `install --hue` records its SHA-256 fingerprint in config, every later connection must match, and a changed certificate is surfaced and must be explicitly re-trusted.
 
 ### Glow
 
 Contract: `glow.Run(ctx, duration time.Duration) error`. The backend is chosen at compile time by build tags. Shared visual parameters are constants in `internal/glow/params.go` (frame thickness 14 px, full hue rotation every 2 s, opacity pulse period 0.6 s between 0.55 and 1.0) and are mirrored verbatim in the JS and Swift renderers with a comment pointing back.
 
-- **Linux / GNOME** — a Shell extension exposing D-Bus `com.infiniteroomlabs.PushItGlow.Start(d: double)` on the session bus at `/com/infiniteroomlabs/PushItGlow`. `Start` adds a non-reactive `St.DrawingArea` to `Main.layoutManager.uiGroup` covering the primary monitor, repaints the frame at ~30 fps via a GLib timeout — four edge strips, each a Cairo linear gradient whose hue phase advances per frame so the rainbow appears to travel around the perimeter (Cairo has no conic gradients), and removes itself after `d` seconds. The Go backend calls `gdbus call --session ...` via `os/exec`. If `gdbus` is missing or the call fails (extension not installed/enabled, not GNOME), it returns nil after logging at debug level — glow is best-effort.
-- **macOS** — `glow/macos/glow.swift`: a borderless `NSWindow` at `.screenSaver` level, `ignoresMouseEvents = true`, `collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]`, clear background, one `CAGradientLayer` (`type = .conic`) masked to a frame path, with `CABasicAnimation`s for rotation and opacity pulse. Takes `--duration` and exits on its own. CI builds it with `swiftc` for `arm64-apple-macos` and `x86_64-apple-macos` and merges with `lipo`; the universal binary is passed to the release build as a CI artifact and embedded with `//go:build darwin` + `go:embed`. At runtime the Go backend extracts it to the data dir if missing or if its embedded hash changed, then `exec`s it detached.
-- **Windows** — in-process: a `WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE` window covering the primary monitor, frames rendered by `internal/glow/paint` (hue by position along the perimeter, phase advancing per frame) into a 32-bit premultiplied BGRA buffer and pushed with `UpdateLayeredWindow` at 30 fps from a locked OS thread running a message loop. `golang.org/x/sys/windows` plus `NewLazySystemDLL` for the few gdi32/user32 calls not wrapped there. No helper, no cgo.
-- **Everything else** — `glow_other.go` returns nil.
+- **Linux / GNOME**  -  a Shell extension exposing D-Bus `com.infiniteroomlabs.PushItGlow.Start(d: double)` on the session bus at `/com/infiniteroomlabs/PushItGlow`. `Start` adds a non-reactive `St.DrawingArea` to `Main.layoutManager.uiGroup` covering the primary monitor, repaints the frame at ~30 fps via a GLib timeout  -  four edge strips, each a Cairo linear gradient whose hue phase advances per frame so the rainbow appears to travel around the perimeter (Cairo has no conic gradients), and removes itself after `d` seconds. The Go backend calls `gdbus call --session ...` via `os/exec`. If `gdbus` is missing or the call fails (extension not installed/enabled, not GNOME), it returns nil after logging at debug level  -  glow is best-effort.
+- **macOS**  -  `glow/macos/glow.swift`: a borderless `NSWindow` at `.screenSaver` level, `ignoresMouseEvents = true`, `collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]`, clear background, one `CAGradientLayer` (`type = .conic`) masked to a frame path, with `CABasicAnimation`s for rotation and opacity pulse. Takes `--duration` and exits on its own. CI builds it with `swiftc` for `arm64-apple-macos` and `x86_64-apple-macos` and merges with `lipo`; the universal binary is passed to the release build as a CI artifact and embedded with `//go:build darwin` + `go:embed`. At runtime the Go backend extracts it to the data dir if missing or if its embedded hash changed, then `exec`s it detached.
+- **Windows**  -  in-process: a `WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE` window covering the primary monitor, frames rendered by `internal/glow/paint` (hue by position along the perimeter, phase advancing per frame) into a 32-bit premultiplied BGRA buffer and pushed with `UpdateLayeredWindow` at 30 fps from a locked OS thread running a message loop. `golang.org/x/sys/windows` plus `NewLazySystemDLL` for the few gdi32/user32 calls not wrapped there. No helper, no cgo.
+- **Everything else**  -  `glow_other.go` returns nil.
 
 ### Hook orchestration
 
@@ -131,7 +131,7 @@ Contract: `glow.Run(ctx, duration time.Duration) error`. The backend is chosen a
    - If `git config --global core.hooksPath` is unset: create `<config dir>/hooks/pre-push` containing the push-it line, set `core.hooksPath` to that directory, record `hooks_path_set_by_us: true`.
    - If set: append to `<hooksPath>/pre-push` (creating it, executable, if absent) the block `# >>> push-it >>> ... # <<< push-it <<<` containing `push-it hook pre-push "$@" || true`, record the file path. If the marker already exists, leave it alone (idempotent).
 4. Hue: prompt for bridge/key/light unless env overrides exist; validate with one GET; store.
-5. Glow: GNOME → extract the extension from `embed.FS` into `~/.local/share/gnome-shell/extensions/<uuid>/`, run `gnome-extensions enable <uuid>`, print the "log out and back in — Wayland can't hot-load extensions" note. macOS → extract the helper into the data dir, `chmod +x`. Windows → nothing to install.
+5. Glow: GNOME -> extract the extension from `embed.FS` into `~/.local/share/gnome-shell/extensions/<uuid>/`, run `gnome-extensions enable <uuid>`, print the "log out and back in  -  Wayland can't hot-load extensions" note. macOS -> extract the helper into the data dir, `chmod +x`. Windows -> nothing to install.
 
 `push-it uninstall` reads `install_state` and does the inverse in reverse order: remove the marker block (or the whole file if we created it), unset `core.hooksPath` only if we set it, disable and remove the GNOME extension, delete the macOS helper, then ask before deleting the config and clips (default: keep clips).
 
@@ -141,9 +141,9 @@ Contract: `glow.Run(ctx, duration time.Duration) error`. The backend is chosen a
 
 No ffmpeg anywhere. Cutting and reviewing live in the binary, which already decodes and plays audio; only transcription needs Python.
 
-- `tools/clipper/transcribe.py SOURCE [--model small.en] -o transcript.json` — PEP 723 script run with `uv run`; faster-whisper word-level timestamps. Its `av` wheel bundles ffmpeg's libraries, so no system ffmpeg is required.
-- `push-it clips cut SOURCE transcript.json [--phrase "push it"] [--allow real,good] [--gap 0.5] [--max 4.0] [--pad 0.3] -o candidates/` — groups words into phrases that start with the target phrase (same rules as the current script), decodes the source (MP3 via go-mp3 or WAV), slices by timestamp, and writes 16-bit PCM WAV clips `NNN-<label>.wav` plus `candidates.json`. Source must be MP3 or WAV; the docs say to convert anything else once with whatever tool you have.
-- `push-it clips review candidates/ --keep-to <clips dir>` — plays each candidate through the same player the hook uses, prompts keep / skip / replay / quit, and moves keepers into the clips dir.
+- `tools/clipper/transcribe.py SOURCE [--model small.en] -o transcript.json`  -  PEP 723 script run with `uv run`; faster-whisper word-level timestamps. Its `av` wheel bundles ffmpeg's libraries, so no system ffmpeg is required.
+- `push-it clips cut SOURCE transcript.json [--phrase "push it"] [--allow real,good] [--gap 0.5] [--max 4.0] [--pad 0.3] -o candidates/`  -  groups words into phrases that start with the target phrase (same rules as the current script), decodes the source (MP3 via go-mp3 or WAV), slices by timestamp, and writes 16-bit PCM WAV clips `NNN-<label>.wav` plus `candidates.json`. Source must be MP3 or WAV; the docs say to convert anything else once with whatever tool you have.
+- `push-it clips review candidates/ --keep-to <clips dir>`  -  plays each candidate through the same player the hook uses, prompts keep / skip / replay / quit, and moves keepers into the clips dir.
 
 `docs/make-your-own-clips.md` walks through the pipeline end to end, states the copyright position plainly, and explains how to adapt `--phrase` for a different track.
 
@@ -159,14 +159,14 @@ No ffmpeg anywhere. Cutting and reviewing live in the binary, which already deco
   - `installer`: temp `HOME`/`XDG_CONFIG_HOME` and a temp git repo; assert hooksPath handling in both branches, marker idempotency, and that `uninstall` returns the filesystem and git config to the starting state.
   - `hook`: `pre-push` returns 0 in under 100 ms with a stubbed runner.
 - `gofmt -l`, `go vet`, `staticcheck`.
-- GNOME extension: `gjs tests/run.js` exercising `glowmath.js` (hue→rgb, frame path points, duration→frame count) with the minimal harness pattern from `claude-usage-gnome`.
+- GNOME extension: `gjs tests/run.js` exercising `glowmath.js` (hue->rgb, frame path points, duration->frame count) with the minimal harness pattern from `claude-usage-gnome`.
 - macOS helper: `swiftc` compile on CI plus `glow --duration 0 --dry-run` exiting 0.
 - Visual verification of all three glow backends is manual and recorded in the release checklist.
 
 ## CI / CD / releases
 
 - `ci.yml` on push and PR: lint, `go test` matrix (3 OSes), gjs tests, swiftc build (artifact `glow-macos-universal`).
-- Semver tags `vMAJOR.MINOR.PATCH`. `release.yml` on tag: requires the CI job to pass, downloads the Swift helper artifact into `glow/macos/bin/`, runs goreleaser: `linux/darwin/windows × amd64/arm64`, `CGO_ENABLED=0`, archives + `checksums.txt`, the GNOME extension zip, and release notes extracted from the matching `CHANGELOG.md` section.
+- Semver tags `vMAJOR.MINOR.PATCH`. `release.yml` on tag: requires the CI job to pass, downloads the Swift helper artifact into `glow/macos/bin/`, runs goreleaser: `linux/darwin/windows x amd64/arm64`, `CGO_ENABLED=0`, archives + `checksums.txt`, the GNOME extension zip, and release notes extracted from the matching `CHANGELOG.md` section.
 - `CHANGELOG.md` follows Keep a Changelog; the release task (`mise run release -- vX.Y.Z`) fails if the version has no changelog section, then tags and pushes.
 
 ## Repository setup and hygiene
