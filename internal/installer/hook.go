@@ -19,7 +19,8 @@ const (
 // Block is the shell snippet appended to pre-push. The absolute binary path
 // is used because GUI git clients often run hooks with a minimal PATH.
 func Block(exe string) string {
-	return fmt.Sprintf("%s\n'%s' hook pre-push \"$@\" || true\n%s\n", MarkerStart, filepath.ToSlash(exe), MarkerEnd)
+	quoted := strings.ReplaceAll(filepath.ToSlash(exe), "'", `'\''`)
+	return fmt.Sprintf("%s\n'%s' hook pre-push \"$@\" || true\n%s\n", MarkerStart, quoted, MarkerEnd)
 }
 
 func expandHome(p string) string {
@@ -33,6 +34,15 @@ func expandHome(p string) string {
 
 // WireHook makes git run push-it on pre-push, recording what it changed in st.
 func WireHook(g Git, cfgDir, exe string, st *config.InstallState) error {
+	if st.HooksPathSetByUs || st.PrePushAppendedTo != "" {
+		// Re-wiring (e.g. after the user changed core.hooksPath out from
+		// under us): reverse our previous wiring first so we never orphan
+		// a block in a hook we no longer track, or leave a stale
+		// core.hooksPath pointing nowhere.
+		if err := UnwireHook(g, st); err != nil {
+			return err
+		}
+	}
 	hp, err := g.Get("core.hooksPath")
 	if err != nil {
 		return err
@@ -52,6 +62,9 @@ func WireHook(g Git, cfgDir, exe string, st *config.InstallState) error {
 		return nil
 	}
 	hp = expandHome(hp)
+	if !filepath.IsAbs(hp) {
+		return fmt.Errorf("installer: core.hooksPath is relative (%q); git resolves it per repository, so push-it cannot wire a single hook - set an absolute path or unset it and re-run", hp)
+	}
 	file := filepath.Join(hp, "pre-push")
 	existing, err := os.ReadFile(file)
 	switch {
