@@ -27,7 +27,7 @@ It replaces the current ad-hoc setup (a bash hook with an inline Python heredoc,
 
 ## Architecture
 
-One Go module (`github.com/InfiniteRoomLabs/push-it`), one binary `push-it`, stdlib wherever possible. Dependencies are limited to: `github.com/ebitengine/oto/v3` (audio output, purego-based, no cgo), `github.com/hajimehoshi/go-mp3` (MP3 decode), `golang.org/x/sys` (Windows syscalls).
+One Go module (`github.com/InfiniteRoomLabs/push-it`), one binary `push-it`, stdlib wherever possible. Dependencies are limited to: `github.com/ebitengine/oto/v3` (audio output on macOS/Windows, purego, no cgo), `github.com/jfreymuth/pulse` (audio output on Linux via the PulseAudio/PipeWire native protocol, pure Go), `github.com/hajimehoshi/go-mp3` (MP3 decode), `golang.org/x/sys` (Windows syscalls).
 
 ```
 cmd/push-it/                       main: subcommand dispatch via stdlib flag
