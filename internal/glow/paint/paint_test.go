@@ -22,6 +22,37 @@ func TestPerimeterPosWalksClockwise(t *testing.T) {
 	}
 }
 
+func TestInFrame(t *testing.T) {
+	w, h := 200, 100
+	for _, p := range []struct{ x, y int }{
+		{0, 0}, {w - 1, 0}, {0, h - 1}, {w - 1, h - 1}, // corners
+		{50, 0}, {50, h - 1}, {0, 50}, {w - 1, 50}, // edge midpoints
+	} {
+		if !InFrame(p.x, p.y, w, h) {
+			t.Fatalf("InFrame(%d, %d, %d, %d) = false, want true", p.x, p.y, w, h)
+		}
+	}
+	if InFrame(w/2, h/2, w, h) {
+		t.Fatal("InFrame at centre must be false")
+	}
+	if InFrame(glow.FrameThickness, glow.FrameThickness, w, h) {
+		t.Fatal("InFrame at (t, t) must be false")
+	}
+}
+
+func TestPerimeterPosInteriorMatchesTopBand(t *testing.T) {
+	w, h := 200, 100
+	x, y := w/2, h/2
+	if InFrame(x, y, w, h) {
+		t.Fatalf("(%d, %d) must be an interior pixel for this test", x, y)
+	}
+	got := PerimeterPos(x, y, w, h)
+	want := float64(x) / float64(2*(w+h))
+	if got != want {
+		t.Fatalf("interior PerimeterPos = %v, want top-band value %v", got, want)
+	}
+}
+
 func TestHueAtRotatesOncePerPeriod(t *testing.T) {
 	if HueAt(0, 0) != 0 {
 		t.Fatal("hue at origin, t=0 must be 0")

@@ -11,9 +11,19 @@ import (
 	"github.com/InfiniteRoomLabs/push-it/internal/glow"
 )
 
+// InFrame reports whether the pixel at (x, y) lies within the frame band of
+// thickness glow.FrameThickness around a w x h screen.
+func InFrame(x, y, w, h int) bool {
+	t := glow.FrameThickness
+	return x < t || x >= w-t || y < t || y >= h-t
+}
+
 // PerimeterPos maps a pixel to its position in [0,1) along the screen
-// perimeter, clockwise from the top-left corner. Pixels are assigned to the
-// nearest edge; corners belong to the top/bottom bands.
+// perimeter, clockwise from the top-left corner. A pixel is assigned to the
+// first matching band in this order: top (y < t), bottom (y >= h-t), right
+// (x >= w-t), left (x < t). All four corner squares therefore belong to the
+// top or bottom band. Renderers that mirror this function must use the same
+// order.
 func PerimeterPos(x, y, w, h int) float64 {
 	p := float64(2 * (w + h))
 	t := glow.FrameThickness
@@ -24,8 +34,13 @@ func PerimeterPos(x, y, w, h int) float64 {
 		return float64(w+h+(w-1-x)) / p
 	case x >= w-t:
 		return float64(w+y) / p
-	default: // left band
+	case x < t:
 		return float64(2*w+h+(h-1-y)) / p
+	default:
+		// interior pixel: not part of the frame; callers check InFrame
+		// first. Returning the top-band value keeps the result
+		// deterministic and in [0,1).
+		return float64(x) / p
 	}
 }
 
@@ -71,13 +86,12 @@ func Render(buf []byte, w, h int, elapsed time.Duration) {
 	if len(buf) < w*h*4 {
 		return
 	}
-	t := glow.FrameThickness
 	alpha := OpacityAt(elapsed)
 	a8 := uint8(math.Round(255 * alpha))
 	for y := 0; y < h; y++ {
 		for x := 0; x < w; x++ {
 			i := (y*w + x) * 4
-			if x >= t && x < w-t && y >= t && y < h-t {
+			if !InFrame(x, y, w, h) {
 				buf[i], buf[i+1], buf[i+2], buf[i+3] = 0, 0, 0, 0
 				continue
 			}
