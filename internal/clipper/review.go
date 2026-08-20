@@ -90,16 +90,24 @@ func copyThenRemove(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer in.Close()
 	out, err := os.Create(dst)
 	if err != nil {
+		_ = in.Close()
 		return err
 	}
 	if _, err := io.Copy(out, in); err != nil {
-		out.Close()
+		_ = out.Close()
+		_ = in.Close()
+		_ = os.Remove(dst)
 		return err
 	}
 	if err := out.Close(); err != nil {
+		_ = in.Close()
+		_ = os.Remove(dst)
+		return err
+	}
+	// Close the source before removing it: Windows refuses to delete an open file.
+	if err := in.Close(); err != nil {
 		return err
 	}
 	return os.Remove(src)
