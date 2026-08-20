@@ -13,7 +13,8 @@ func TestStubBackendIsNoop(t *testing.T) {
 	if err := Run(context.Background(), 10*time.Millisecond); err != nil {
 		t.Fatal(err)
 	}
-	if err := Install(nil); err != nil || Uninstall(nil) != nil {
+	note, err := Install(nil)
+	if err != nil || note != "" || Uninstall(nil) != nil {
 		t.Fatal("stub install/uninstall must be no-ops")
 	}
 }

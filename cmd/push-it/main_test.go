@@ -10,6 +10,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/InfiniteRoomLabs/push-it/internal/config"
+	"github.com/InfiniteRoomLabs/push-it/internal/glow"
 )
 
 // hueTestServer starts an httptest TLS server that answers Hue v1 API
@@ -143,6 +146,26 @@ func TestInstallAndUninstallSoundOnly(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(tmp, "cfg", "hooks", "pre-push")); err == nil {
 		t.Fatal("hook not removed")
+	}
+}
+
+func TestInstallPrintsGlowNote(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	tmp := t.TempDir()
+	t.Setenv("PUSH_IT_CONFIG_DIR", filepath.Join(tmp, "cfg"))
+	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(tmp, "gitconfig"))
+	t.Setenv("HOME", tmp)
+	orig := glow.Install
+	glow.Install = func(*config.InstallState) (string, error) { return "log out and back in", nil }
+	t.Cleanup(func() { glow.Install = orig })
+	var out, errOut bytes.Buffer
+	if code := run([]string{"install", "--glow", "--yes"}, strings.NewReader(""), &out, &errOut); code != 0 {
+		t.Fatalf("code=%d stderr=%s", code, errOut.String())
+	}
+	if !strings.Contains(out.String(), "glow: log out and back in") {
+		t.Fatalf("note not printed:\n%s", out.String())
 	}
 }
 

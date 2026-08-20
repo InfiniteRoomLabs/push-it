@@ -221,8 +221,11 @@ func cmdInstall(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 1
 	}
 	if cfg.Glow.Enabled {
-		if err := glow.Install(&cfg.InstallState); err != nil {
+		note, err := glow.Install(&cfg.InstallState)
+		if err != nil {
 			fmt.Fprintf(stderr, "push-it: glow: %v\n", err)
+		} else if note != "" {
+			fmt.Fprintf(stdout, "glow: %s\n", note)
 		}
 	}
 	if err := cfg.Save(); err != nil {

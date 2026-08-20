@@ -28,7 +28,9 @@ var Backend = "none"
 var Run = func(ctx context.Context, d time.Duration) error { return nil }
 
 // Install puts any platform pieces in place (GNOME extension, macOS helper).
-var Install = func(st *config.InstallState) error { return nil }
+// It returns a user-facing note (for example "log out and back in") that the
+// installer prints when non-empty. A nil st is an error, never a panic.
+var Install = func(st *config.InstallState) (string, error) { return "", nil }
 
 // Uninstall reverses Install.
 var Uninstall = func(st *config.InstallState) error { return nil }
