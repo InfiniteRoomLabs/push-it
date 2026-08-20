@@ -1,7 +1,7 @@
 [tools]
-"aqua:goreleaser/goreleaser" = "latest"
+"aqua:goreleaser/goreleaser" = "2.17.1"
 go = "1.26.5"
-"aqua:dominikh/go-tools/staticcheck" = "latest"
+"aqua:dominikh/go-tools/staticcheck" = "2026.2"
 
 [tasks.test]
 run = "go test ./..."
