@@ -106,3 +106,33 @@ func TestReviewKeepsAndSkips(t *testing.T) {
 		t.Fatal("keeper should be moved, not copied")
 	}
 }
+
+func TestReviewResumesPastAlreadyReviewed(t *testing.T) {
+	cand, keep, elsewhere := t.TempDir(), t.TempDir(), t.TempDir()
+	src := tone(8000, 3*time.Second)
+	_, err := Cut(src, []Phrase{{ID: 1, Start: 0, End: 0.5, Label: "push it"}, {ID: 2, Start: 1, End: 1.5, Label: "push it"}, {ID: 3, Start: 2, End: 2.5, Label: "push it"}}, 0, cand)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Simulate a prior run having already moved the first candidate out.
+	if err := os.Rename(filepath.Join(cand, "001-push-it.wav"), filepath.Join(elsewhere, "001-push-it.wav")); err != nil {
+		t.Fatal(err)
+	}
+	plays := 0
+	in := strings.NewReader("s\ns\n")
+	var out bytes.Buffer
+	kept, err := Review(in, &out, func(*player.Clip) error { plays++; return nil }, cand, keep)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if kept != 0 || plays != 2 {
+		t.Fatalf("kept=%d plays=%d", kept, plays)
+	}
+}
+
+func TestFileNameSanitizesLabel(t *testing.T) {
+	got := fileName(Phrase{ID: 1, Label: `push it 24/7 "now"`})
+	if got != "001-push-it-24-7-now.wav" {
+		t.Fatalf("fileName = %q", got)
+	}
+}

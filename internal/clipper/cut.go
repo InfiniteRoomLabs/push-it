@@ -11,8 +11,31 @@ import (
 	"github.com/InfiniteRoomLabs/push-it/internal/player"
 )
 
+// slug lowercases s and maps every rune outside [a-z0-9] to '-', collapsing
+// runs of '-' to one and trimming leading/trailing '-'. Empty input (or
+// input that sanitises to nothing) yields "clip".
+func slug(s string) string {
+	var b strings.Builder
+	prevDash := false
+	for _, r := range strings.ToLower(s) {
+		switch {
+		case r >= 'a' && r <= 'z' || r >= '0' && r <= '9':
+			b.WriteRune(r)
+			prevDash = false
+		case !prevDash:
+			b.WriteByte('-')
+			prevDash = true
+		}
+	}
+	out := strings.Trim(b.String(), "-")
+	if out == "" {
+		return "clip"
+	}
+	return out
+}
+
 func fileName(p Phrase) string {
-	return fmt.Sprintf("%03d-%s.wav", p.ID, strings.ReplaceAll(p.Label, " ", "-"))
+	return fmt.Sprintf("%03d-%s.wav", p.ID, slug(p.Label))
 }
 
 func seconds(f float64) time.Duration { return time.Duration(f * float64(time.Second)) }

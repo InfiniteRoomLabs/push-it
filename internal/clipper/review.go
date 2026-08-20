@@ -3,8 +3,10 @@ package clipper
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -30,6 +32,10 @@ func Review(in io.Reader, out io.Writer, play func(*player.Clip) error, candDir,
 	kept := 0
 	for i, p := range phrases {
 		src := filepath.Join(candDir, p.File)
+		if _, err := os.Stat(src); errors.Is(err, fs.ErrNotExist) {
+			fmt.Fprintf(out, "  [%d/%d] %s - already reviewed, skipping\n", i+1, len(phrases), p.Label)
+			continue
+		}
 		clip, err := player.Decode(src)
 		if err != nil {
 			return kept, err
