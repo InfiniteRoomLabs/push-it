@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - Module path `github.com/InfiniteRoomLabs/push-it`; Go `1.26`; `CGO_ENABLED=0` must build on linux/darwin/windows x amd64/arm64.
-- Dependencies limited to `github.com/ebitengine/oto/v3`, `github.com/hajimehoshi/go-mp3`, `golang.org/x/sys`. No CLI framework, no TOML lib, no ffmpeg.
+- Dependencies limited to `github.com/ebitengine/oto/v3` (audio on macOS/Windows; its Linux driver needs cgo so it is build-tagged out there), `github.com/jfreymuth/pulse` (pure-Go PulseAudio/PipeWire client, Linux audio), `github.com/hajimehoshi/go-mp3`, `golang.org/x/sys`. No CLI framework, no TOML lib, no ffmpeg.
 - Repository is public from the first commit: no personal paths, IPs, Hue light IDs, vault names, or internal hostnames anywhere, including tests, docs, and this plan. Examples use `192.168.1.2`, light `1`, `<your-...>` placeholders.
 - No audio files committed except the 0.1 s silent MP3 test fixture.
 - `pre-push` must never fail or delay a push: `push-it hook pre-push` exits 0 in under 100 ms and logs errors to `<config dir>/push-it.log`.
