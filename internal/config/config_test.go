@@ -66,6 +66,86 @@ func TestEnvOverridesHue(t *testing.T) {
 	}
 }
 
+func TestSaveTightensExistingPermissions(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("PUSH_IT_CONFIG_DIR", dir)
+	if runtime.GOOS != "windows" {
+		if err := os.Chmod(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Save(); err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS != "windows" {
+		di, err := os.Stat(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if di.Mode().Perm() != 0o700 {
+			t.Fatalf("dir mode = %o, want 700", di.Mode().Perm())
+		}
+		fi, err := os.Stat(filepath.Join(dir, "config.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if fi.Mode().Perm() != 0o600 {
+			t.Fatalf("file mode = %o, want 600", fi.Mode().Perm())
+		}
+	}
+}
+
+func TestSaveDoesNotPersistTransientEnvOverride(t *testing.T) {
+	t.Setenv("PUSH_IT_CONFIG_DIR", t.TempDir())
+	t.Setenv("PUSH_IT_HUE_KEY", "envkey")
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Hue.Key != "envkey" {
+		t.Fatalf("Hue.Key = %q, want envkey", c.Hue.Key)
+	}
+	if err := c.Save(); err != nil {
+		t.Fatal(err)
+	}
+	os.Unsetenv("PUSH_IT_HUE_KEY")
+	c2, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c2.Hue.Key != "" {
+		t.Fatalf("Hue.Key persisted the env override: %q, want empty", c2.Hue.Key)
+	}
+}
+
+func TestSavePersistsExplicitChangeOverEnvOverride(t *testing.T) {
+	t.Setenv("PUSH_IT_CONFIG_DIR", t.TempDir())
+	t.Setenv("PUSH_IT_HUE_KEY", "envkey")
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.Hue.Key = "explicit"
+	if err := c.Save(); err != nil {
+		t.Fatal(err)
+	}
+	os.Unsetenv("PUSH_IT_HUE_KEY")
+	c2, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c2.Hue.Key != "explicit" {
+		t.Fatalf("Hue.Key = %q, want explicit", c2.Hue.Key)
+	}
+}
+
 func TestLogAndLockPaths(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("PUSH_IT_CONFIG_DIR", dir)

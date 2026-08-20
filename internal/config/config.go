@@ -46,6 +46,10 @@ type Config struct {
 	InstallState InstallState `json:"install_state"`
 
 	dir string
+	// fileHue holds the Hue values as they stood before PUSH_IT_HUE_* env
+	// overrides were applied (i.e. what is actually on disk). Save uses it
+	// so a transient env override never gets written into the file.
+	fileHue Hue
 }
 
 // Dir returns the configuration directory: $PUSH_IT_CONFIG_DIR if set,
@@ -76,12 +80,14 @@ func Default() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Config{
+	c := &Config{
 		Sound: Sound{Enabled: true, ClipsDir: filepath.Join(d, "clips"), Volume: 0.7},
 		Hue:   Hue{Enabled: false, Light: 1},
 		Glow:  Glow{Enabled: true},
 		dir:   d,
-	}, nil
+	}
+	c.fileHue = c.Hue
+	return c, nil
 }
 
 // Load reads the config file, falling back to Default when it does not
@@ -102,6 +108,7 @@ func Load() (*Config, error) {
 			return nil, err
 		}
 	}
+	c.fileHue = c.Hue // on-disk values, before env overrides are applied below
 	applyEnv(c)
 	return c, nil
 }
@@ -120,16 +127,48 @@ func applyEnv(c *Config) {
 	}
 }
 
-// Save writes the config with restrictive permissions (it holds the Hue key).
+// hueForSave returns the Hue values to persist: any field that still equals
+// a live PUSH_IT_HUE_* env override is replaced with its pre-override,
+// on-disk value, so a transient env var (e.g. an ephemeral key) never gets
+// written into the file. Fields the caller changed to something else are
+// persisted as set.
+func (c *Config) hueForSave() Hue {
+	h := c.Hue
+	if v := os.Getenv("PUSH_IT_HUE_BRIDGE"); v != "" && h.Bridge == v {
+		h.Bridge = c.fileHue.Bridge
+	}
+	if v := os.Getenv("PUSH_IT_HUE_KEY"); v != "" && h.Key == v {
+		h.Key = c.fileHue.Key
+	}
+	if v := os.Getenv("PUSH_IT_HUE_LIGHT"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && h.Light == n {
+			h.Light = c.fileHue.Light
+		}
+	}
+	return h
+}
+
+// Save writes the config with restrictive permissions (it holds the Hue
+// key). Permissions are enforced even when the dir/file already existed
+// with looser modes.
 func (c *Config) Save() error {
 	if err := os.MkdirAll(c.dir, 0o700); err != nil {
 		return err
 	}
-	data, err := json.MarshalIndent(c, "", "  ")
+	if err := os.Chmod(c.dir, 0o700); err != nil {
+		return err
+	}
+	saved := *c
+	saved.Hue = c.hueForSave()
+	data, err := json.MarshalIndent(&saved, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(c.dir, "config.json"), append(data, '\n'), 0o600)
+	path := filepath.Join(c.dir, "config.json")
+	if err := os.WriteFile(path, append(data, '\n'), 0o600); err != nil {
+		return err
+	}
+	return os.Chmod(path, 0o600)
 }
 
 // Dir returns the directory this config was loaded from.
