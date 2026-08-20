@@ -124,3 +124,75 @@ func TestPing(t *testing.T) {
 		t.Fatalf("calls = %d", len(*calls))
 	}
 }
+
+// TestBurstFailsOnAPIError covers a Hue v1 API-level rejection: the bridge
+// answers a PUT with HTTP 200 but an "error" element in the JSON body
+// instead of "success". put must treat that as a failure, not a success.
+func TestBurstFailsOnAPIError(t *testing.T) {
+	var puts int
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			_, _ = w.Write([]byte(`{"state":{"on":false,"bri":120,"hue":5000,"sat":200,"reachable":true}}`))
+			return
+		}
+		puts++
+		if puts == 1 {
+			// prime PUT succeeds
+			_, _ = w.Write([]byte(`[{"success":{}}]`))
+			return
+		}
+		// first hue-step PUT is rejected by the bridge
+		_, _ = w.Write([]byte(`[{"error":{"type":6,"address":"/lights/1/state/hue","description":"parameter, hue, is not modifiable. Device is set to off."}}]`))
+	}))
+	t.Cleanup(srv.Close)
+	c := testClient(srv)
+	err := c.Burst(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "not modifiable") {
+		t.Fatalf("expected error containing %q, got %v", "not modifiable", err)
+	}
+}
+
+// TestBurstRestoresOnMidBurstFailure covers a mid-burst HTTP failure: Burst
+// must restore the saved state (best effort) even though a step PUT failed,
+// rather than stranding the light at full brightness.
+func TestBurstRestoresOnMidBurstFailure(t *testing.T) {
+	var mu sync.Mutex
+	var calls []call
+	stepPUTs := 0
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		var body map[string]any
+		if len(b) > 0 {
+			_ = json.Unmarshal(b, &body)
+		}
+		mu.Lock()
+		calls = append(calls, call{r.Method, r.URL.Path, body})
+		mu.Unlock()
+		if r.Method == http.MethodGet {
+			_, _ = w.Write([]byte(`{"state":{"on":false,"bri":120,"hue":5000,"sat":200,"reachable":true}}`))
+			return
+		}
+		if body["transitiontime"] == float64(3) {
+			stepPUTs++
+			if stepPUTs == 3 {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+		}
+		_, _ = w.Write([]byte(`[{"success":{}}]`))
+	}))
+	t.Cleanup(srv.Close)
+	c := testClient(srv)
+	if err := c.Burst(context.Background()); err == nil {
+		t.Fatal("expected error")
+	}
+	mu.Lock()
+	last := calls[len(calls)-1]
+	mu.Unlock()
+	if last.method != "PUT" || last.path != "/api/KEY/lights/1/state" {
+		t.Fatalf("last call = %+v", last)
+	}
+	if last.body["on"] != false || last.body["bri"] != float64(120) || last.body["hue"] != float64(5000) || last.body["sat"] != float64(200) {
+		t.Fatalf("restore body = %+v", last.body)
+	}
+}

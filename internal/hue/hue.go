@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"time"
@@ -128,6 +129,33 @@ func (c *Client) put(ctx context.Context, body any) error {
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("hue: PUT state: %s", resp.Status)
 	}
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	if len(respBody) == 0 {
+		return nil
+	}
+	// The Hue v1 API answers a rejected state change with HTTP 200 and an
+	// array of results; a rejected element carries an "error" key instead
+	// of "success", so the status code alone cannot tell success from failure.
+	var results []map[string]json.RawMessage
+	if err := json.Unmarshal(respBody, &results); err != nil {
+		return fmt.Errorf("hue: PUT state: unexpected response body: %w", err)
+	}
+	for _, r := range results {
+		errRaw, ok := r["error"]
+		if !ok {
+			continue
+		}
+		var apiErr struct {
+			Description string `json:"description"`
+		}
+		if err := json.Unmarshal(errRaw, &apiErr); err == nil && apiErr.Description != "" {
+			return fmt.Errorf("hue: PUT state: %s", apiErr.Description)
+		}
+		return fmt.Errorf("hue: PUT state: %s", string(errRaw))
+	}
 	return nil
 }
 
@@ -140,22 +168,38 @@ func (c *Client) Ping(ctx context.Context) error {
 }
 
 // Burst saves the light's state, runs the hue wheel, and restores it.
-func (c *Client) Burst(ctx context.Context) error {
+func (c *Client) Burst(ctx context.Context) (err error) {
 	var saved struct {
 		State state `json:"state"`
 	}
 	if err := c.get(ctx, &saved); err != nil {
 		return err
 	}
-	if err := c.put(ctx, map[string]any{"on": true, "bri": 254, "sat": 254, "hue": 0, "transitiontime": 0}); err != nil {
+
+	// If anything after this point fails, best-effort restore the saved
+	// state so a mid-burst error doesn't strand the light at full
+	// brightness. Use a fresh context: the caller's ctx may already be
+	// cancelled or timed out, which is often exactly why we're here.
+	defer func() {
+		if err != nil {
+			restoreCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			_ = c.put(restoreCtx, saved.State)
+		}
+	}()
+
+	if err = c.put(ctx, map[string]any{"on": true, "bri": 254, "sat": 254, "hue": 0, "transitiontime": 0}); err != nil {
 		return err
 	}
 	for _, h := range Steps {
 		c.Sleep(450 * time.Millisecond)
-		if err := c.put(ctx, map[string]any{"hue": h, "transitiontime": 3}); err != nil {
+		if err = c.put(ctx, map[string]any{"hue": h, "transitiontime": 3}); err != nil {
 			return err
 		}
 	}
 	c.Sleep(600 * time.Millisecond)
-	return c.put(ctx, saved.State)
+	if err = c.put(ctx, saved.State); err != nil {
+		return err
+	}
+	return nil
 }
