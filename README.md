@@ -6,7 +6,21 @@ Ships no audio  -  you cut your own clips from a track you own with the bundled 
 
 ## Install
 
-See [docs/install.md](docs/install.md).
+```sh
+go install github.com/InfiniteRoomLabs/push-it/cmd/push-it@latest
+push-it install            # asks: sound? hue? glow?
+```
+
+Prebuilt binaries for Linux, macOS, and Windows (amd64 + arm64) and a one-line `install.sh` come with the first tagged release. Details, kill switches, and uninstall: [docs/install.md](docs/install.md).
+
+## Usage
+
+```sh
+git push                   # that's it
+push-it play               # one random clip, on demand
+push-it doctor             # what's configured, what's reachable
+NO_PUSH_IT=1 git push      # quiet push
+```
 
 ## Docs
 
