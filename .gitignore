@@ -1,0 +1,8 @@
+bin/
+dist/
+*.shell-extension.zip
+.claude/
+.codex/
+.gemini/
+.DS_Store
+.superpowers/

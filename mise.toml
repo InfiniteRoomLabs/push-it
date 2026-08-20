@@ -1,0 +1,17 @@
+[tools]
+"aqua:goreleaser/goreleaser" = "latest"
+go = "1.26.5"
+"aqua:dominikh/go-tools/staticcheck" = "latest"
+
+[tasks.test]
+run = "go test ./..."
+
+[tasks.lint]
+run = [
+  "test -z \"$(gofmt -l .)\" || (gofmt -l . && exit 1)",
+  "go vet ./...",
+  "staticcheck ./...",
+]
+
+[tasks.build]
+run = "go build -o bin/push-it ./cmd/push-it"
