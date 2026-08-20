@@ -93,21 +93,38 @@ func cmdInstall(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if fs.Parse(args) != nil {
 		return 2
 	}
+	fresh := true
+	if p, err := config.Path(); err == nil {
+		if _, err := os.Stat(p); err == nil {
+			fresh = false
+		}
+	}
 	cfg, ok := loadConfig(stderr)
 	if !ok {
 		return 1
 	}
 	p := prompter{in: bufio.NewScanner(stdin), out: stdout}
 	explicit := *sound || *hueOn || *glowOn
-	var wantSound, wantHue, wantGlow bool
+	// wantSound/wantHue drive this-run behaviour below (the clips-empty hint
+	// and whether to prompt/check Hue). Glow has no such this-run behaviour
+	// left - the installer is gated on cfg.Glow.Enabled directly below - so
+	// there is no wantGlow.
+	var wantSound, wantHue bool
 	switch {
 	case *all:
-		wantSound, wantHue, wantGlow = true, true, true
+		wantSound, wantHue = true, true
 		cfg.Sound.Enabled, cfg.Hue.Enabled, cfg.Glow.Enabled = true, true, true
 	case explicit:
 		// Flags are additive: touch only the components explicitly named on
-		// the command line and leave the rest as loaded from disk.
-		wantSound, wantHue, wantGlow = *sound, *hueOn, *glowOn
+		// the command line and leave the rest as loaded from disk. On a
+		// fresh config (no file on disk yet) there is nothing to leave as
+		// loaded, so start all three off before enabling the named ones -
+		// otherwise config.Default()'s Glow.Enabled=true would leak through
+		// on an unrelated `install --sound`.
+		wantSound, wantHue = *sound, *hueOn
+		if fresh {
+			cfg.Sound.Enabled, cfg.Hue.Enabled, cfg.Glow.Enabled = false, false, false
+		}
 		if *sound {
 			cfg.Sound.Enabled = true
 		}
@@ -118,13 +135,13 @@ func cmdInstall(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			cfg.Glow.Enabled = true
 		}
 	case *yes:
-		wantSound, wantHue, wantGlow = true, false, glowDefault()
-		cfg.Sound.Enabled, cfg.Hue.Enabled, cfg.Glow.Enabled = wantSound, wantHue, wantGlow
+		wantSound, wantHue = true, false
+		cfg.Sound.Enabled, cfg.Hue.Enabled, cfg.Glow.Enabled = wantSound, wantHue, glowDefault()
 	default:
 		wantSound = p.yesNo("Play a clip on push?", true)
 		wantHue = p.yesNo("Rainbow a Philips Hue light on push?", false)
-		wantGlow = p.yesNo("Glow the screen edges on push?", glowDefault())
-		cfg.Sound.Enabled, cfg.Hue.Enabled, cfg.Glow.Enabled = wantSound, wantHue, wantGlow
+		glowAns := p.yesNo("Glow the screen edges on push?", glowDefault())
+		cfg.Sound.Enabled, cfg.Hue.Enabled, cfg.Glow.Enabled = wantSound, wantHue, glowAns
 	}
 
 	if wantHue {
@@ -171,7 +188,7 @@ func cmdInstall(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "push-it: hook: %v\n", err)
 		return 1
 	}
-	if wantGlow {
+	if cfg.Glow.Enabled {
 		if err := glow.Install(&cfg.InstallState); err != nil {
 			fmt.Fprintf(stderr, "push-it: glow: %v\n", err)
 		}

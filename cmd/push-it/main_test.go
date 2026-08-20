@@ -185,3 +185,43 @@ func TestInstallExplicitFlagsAreAdditive(t *testing.T) {
 		t.Fatalf("sound should still be enabled after `install --hue`:\n%s", b)
 	}
 }
+
+// TestInstallFlagsOnFreshConfigStartFromOff guards against
+// config.Default()'s Glow.Enabled=true leaking through an unrelated
+// `install --sound` on a machine with no config file yet: with nothing on
+// disk to treat as "already loaded", an explicit single-component flag must
+// start all three components off before enabling the one named.
+func TestInstallFlagsOnFreshConfigStartFromOff(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	tmp := t.TempDir()
+	t.Setenv("PUSH_IT_CONFIG_DIR", filepath.Join(tmp, "cfg"))
+	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(tmp, "gitconfig"))
+	t.Setenv("HOME", tmp)
+	var out, errOut bytes.Buffer
+	if code := run([]string{"install", "--sound", "--yes"}, strings.NewReader(""), &out, &errOut); code != 0 {
+		t.Fatalf("install --sound code=%d stderr=%s", code, errOut.String())
+	}
+	b, err := os.ReadFile(filepath.Join(tmp, "cfg", "config.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var saved struct {
+		Sound struct {
+			Enabled bool `json:"enabled"`
+		} `json:"sound"`
+		Hue struct {
+			Enabled bool `json:"enabled"`
+		} `json:"hue"`
+		Glow struct {
+			Enabled bool `json:"enabled"`
+		} `json:"glow"`
+	}
+	if err := json.Unmarshal(b, &saved); err != nil {
+		t.Fatal(err)
+	}
+	if !saved.Sound.Enabled || saved.Hue.Enabled || saved.Glow.Enabled {
+		t.Fatalf("fresh `install --sound` should start sound=true, hue=false, glow=false:\n%s", b)
+	}
+}
