@@ -64,6 +64,23 @@ func (p prompter) text(q, def string) string {
 	return def
 }
 
+// secret behaves like text but never echoes cur (a stored/env secret): it
+// shows "[keep current]" instead of the value, and empty input keeps cur.
+func (p prompter) secret(q, cur string) string {
+	label := q
+	if cur != "" {
+		label = q + " [keep current]"
+	}
+	fmt.Fprintf(p.out, "%s: ", label)
+	if !p.in.Scan() {
+		return cur
+	}
+	if s := strings.TrimSpace(p.in.Text()); s != "" {
+		return s
+	}
+	return cur
+}
+
 func glowDefault() bool {
 	switch runtime.GOOS {
 	case "linux":
@@ -145,33 +162,48 @@ func cmdInstall(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 
 	if wantHue {
-		if !*yes || cfg.Hue.Bridge == "" || cfg.Hue.Key == "" {
-			cfg.Hue.Bridge = p.text("Hue bridge host or IP", cfg.Hue.Bridge)
-			cfg.Hue.Key = p.text("Hue API key", cfg.Hue.Key)
-			if n, err := strconv.Atoi(p.text("Light ID", strconv.Itoa(cfg.Hue.Light))); err == nil {
-				cfg.Hue.Light = n
-			}
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		fp, err := hue.Fingerprint(ctx, cfg.Hue.Bridge)
-		if err == nil {
-			if cfg.Hue.CertSHA256 != "" && cfg.Hue.CertSHA256 != fp {
-				fmt.Fprintf(stdout, "hue: bridge certificate changed (was %s, now %s)\n", short(cfg.Hue.CertSHA256), short(fp))
-				if !*yes && !p.yesNo("Trust the new certificate?", false) {
-					cancel()
-					fmt.Fprintln(stderr, "push-it: keeping the old pin; hue will fail until you re-run install --hue")
-					return 1
+		switch {
+		case *yes && (cfg.Hue.Bridge == "" || cfg.Hue.Key == ""):
+			// Non-interactive and unconfigured: skip rather than prompt (we
+			// can't) or save a broken bridge/key.
+			fmt.Fprintln(stdout, "hue: skipped (set PUSH_IT_HUE_BRIDGE and PUSH_IT_HUE_KEY or run install --hue interactively)")
+			cfg.Hue.Enabled = false
+		default:
+			if !*yes || cfg.Hue.Bridge == "" || cfg.Hue.Key == "" {
+				cfg.Hue.Bridge = p.text("Hue bridge host or IP", cfg.Hue.Bridge)
+				cfg.Hue.Key = p.secret("Hue API key", cfg.Hue.Key)
+				if n, err := strconv.Atoi(p.text("Light ID", strconv.Itoa(cfg.Hue.Light))); err == nil {
+					cfg.Hue.Light = n
 				}
 			}
-			cfg.Hue.CertSHA256 = fp
-			fmt.Fprintf(stdout, "hue: pinned bridge certificate %s...\n", short(fp))
-			err = hue.New(cfg.Hue.Bridge, cfg.Hue.Key, cfg.Hue.Light, fp).Ping(ctx)
-		}
-		cancel()
-		if err != nil {
-			fmt.Fprintf(stderr, "push-it: hue check failed: %v (saved anyway; fix with `push-it install --hue`)\n", err)
-		} else {
-			fmt.Fprintln(stdout, "hue: bridge reachable")
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			fp, err := hue.Fingerprint(ctx, cfg.Hue.Bridge)
+			if err == nil {
+				if cfg.Hue.CertSHA256 != "" && cfg.Hue.CertSHA256 != fp {
+					if *yes {
+						// TOFU is strict here on purpose: a scripted `install
+						// --yes` must never auto-trust a changed bridge cert.
+						cancel()
+						fmt.Fprintf(stderr, "push-it: hue bridge certificate changed (was %s, now %s); refusing to re-pin non-interactively - run install --hue without --yes to review it\n", short(cfg.Hue.CertSHA256), short(fp))
+						return 1
+					}
+					fmt.Fprintf(stdout, "hue: bridge certificate changed (was %s, now %s)\n", short(cfg.Hue.CertSHA256), short(fp))
+					if !p.yesNo("Trust the new certificate?", false) {
+						cancel()
+						fmt.Fprintln(stdout, "no changes were made to the Hue configuration")
+						return 1
+					}
+				}
+				cfg.Hue.CertSHA256 = fp
+				fmt.Fprintf(stdout, "hue: pinned bridge certificate %s...\n", short(fp))
+				err = hue.New(cfg.Hue.Bridge, cfg.Hue.Key, cfg.Hue.Light, fp).Ping(ctx)
+			}
+			cancel()
+			if err != nil {
+				fmt.Fprintf(stderr, "push-it: hue check failed: %v (saved anyway; fix with `push-it install --hue`)\n", err)
+			} else {
+				fmt.Fprintln(stdout, "hue: bridge reachable")
+			}
 		}
 	}
 

@@ -3,12 +3,32 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+// hueTestServer starts an httptest TLS server that answers Hue v1 API
+// requests well enough for install/doctor's Fingerprint+Ping checks to
+// succeed, and returns the bridge address (host:port, no scheme) to set as
+// PUSH_IT_HUE_BRIDGE - keeping these tests hermetic instead of dialing a
+// real port.
+func hueTestServer(t *testing.T) (bridge string, srv *httptest.Server) {
+	t.Helper()
+	srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			_, _ = w.Write([]byte(`{"state":{"on":false,"bri":1,"hue":1,"sat":1}}`))
+			return
+		}
+		_, _ = w.Write([]byte(`[{"success":{}}]`))
+	}))
+	t.Cleanup(srv.Close)
+	return strings.TrimPrefix(srv.URL, "https://"), srv
+}
 
 // TestMain lets this test binary double as the detached child process that
 // hook.PrePush spawns (os.Executable() is the test binary under `go test`).
@@ -161,7 +181,8 @@ func TestInstallExplicitFlagsAreAdditive(t *testing.T) {
 		t.Fatalf("install --all code=%d stderr=%s", code, errOut.String())
 	}
 
-	t.Setenv("PUSH_IT_HUE_BRIDGE", "127.0.0.1")
+	bridge, _ := hueTestServer(t)
+	t.Setenv("PUSH_IT_HUE_BRIDGE", bridge)
 	t.Setenv("PUSH_IT_HUE_KEY", "k")
 	out.Reset()
 	errOut.Reset()
@@ -223,5 +244,90 @@ func TestInstallFlagsOnFreshConfigStartFromOff(t *testing.T) {
 	}
 	if !saved.Sound.Enabled || saved.Hue.Enabled || saved.Glow.Enabled {
 		t.Fatalf("fresh `install --sound` should start sound=true, hue=false, glow=false:\n%s", b)
+	}
+}
+
+// TestInstallHueYesSkipsWhenUnconfigured covers the --yes + no-Hue-env case:
+// install must not prompt (it can't, non-interactively) and must not save
+// hue.enabled=true with an empty bridge/key.
+func TestInstallHueYesSkipsWhenUnconfigured(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	tmp := t.TempDir()
+	t.Setenv("PUSH_IT_CONFIG_DIR", filepath.Join(tmp, "cfg"))
+	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(tmp, "gitconfig"))
+	t.Setenv("HOME", tmp)
+	var out, errOut bytes.Buffer
+	if code := run([]string{"install", "--hue", "--yes"}, strings.NewReader(""), &out, &errOut); code != 0 {
+		t.Fatalf("install --hue --yes code=%d stderr=%s", code, errOut.String())
+	}
+	if !strings.Contains(out.String(), "hue: skipped") {
+		t.Fatalf("stdout = %q, want a \"hue: skipped\" notice", out.String())
+	}
+	b, err := os.ReadFile(filepath.Join(tmp, "cfg", "config.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var saved struct {
+		Hue struct {
+			Enabled bool `json:"enabled"`
+		} `json:"hue"`
+	}
+	if err := json.Unmarshal(b, &saved); err != nil {
+		t.Fatal(err)
+	}
+	if saved.Hue.Enabled {
+		t.Fatalf("hue.enabled should be false when --yes has no bridge/key:\n%s", b)
+	}
+}
+
+// TestInstallHueYesRefusesChangedCert covers the security-critical TOFU
+// path: `install --hue --yes` must never auto-trust a bridge certificate
+// that differs from the stored pin. It must refuse non-interactively,
+// leave the old pin on disk, and exit 1.
+func TestInstallHueYesRefusesChangedCert(t *testing.T) {
+	tmp := t.TempDir()
+	cfgDir := filepath.Join(tmp, "cfg")
+	t.Setenv("PUSH_IT_CONFIG_DIR", cfgDir)
+	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(tmp, "gitconfig"))
+	t.Setenv("HOME", tmp)
+
+	stalePin := strings.Repeat("0", 64)
+	if err := os.MkdirAll(cfgDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	preExisting := `{"hue":{"cert_sha256":"` + stalePin + `"}}`
+	if err := os.WriteFile(filepath.Join(cfgDir, "config.json"), []byte(preExisting), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	bridge, _ := hueTestServer(t)
+	t.Setenv("PUSH_IT_HUE_BRIDGE", bridge)
+	t.Setenv("PUSH_IT_HUE_KEY", "k")
+
+	var out, errOut bytes.Buffer
+	code := run([]string{"install", "--hue", "--yes"}, strings.NewReader(""), &out, &errOut)
+	if code != 1 {
+		t.Fatalf("code=%d, want 1; stdout=%s stderr=%s", code, out.String(), errOut.String())
+	}
+	if !strings.Contains(errOut.String(), "refusing to re-pin non-interactively") {
+		t.Fatalf("stderr = %q, want the refusal message", errOut.String())
+	}
+
+	b, err := os.ReadFile(filepath.Join(cfgDir, "config.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var saved struct {
+		Hue struct {
+			CertSHA256 string `json:"cert_sha256"`
+		} `json:"hue"`
+	}
+	if err := json.Unmarshal(b, &saved); err != nil {
+		t.Fatal(err)
+	}
+	if saved.Hue.CertSHA256 != stalePin {
+		t.Fatalf("cert_sha256 = %q, want unchanged stale pin %q", saved.Hue.CertSHA256, stalePin)
 	}
 }
