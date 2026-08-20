@@ -21,8 +21,10 @@ This runs [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (`small.en
 ## 2. Cut candidates
 
 ```sh
-push-it clips cut source.mp3 transcript.json -o candidates/
+push-it clips cut -o candidates/ source.mp3 transcript.json
 ```
+
+Flags go before the file arguments.
 
 Defaults find phrases that start with "push it" and may continue with "push", "it", "real", "good" - up to 4 s long, with at most 0.5 s between words - and write each as a padded WAV (`001-push-it.wav`, `002-push-it-push-it-real-good.wav`, ...) plus `candidates.json`.
 
@@ -36,7 +38,7 @@ Tune for your track:
 | `--max 4.0` | `4.0` | max clip length (s) |
 | `--pad 0.3` | `0.3` | padding before/after (s) |
 
-Example for a different hook line: `push-it clips cut track.mp3 transcript.json --phrase "ship it" --allow "now,yeah"`.
+Example for a different hook line: `push-it clips cut --phrase "ship it" --allow "now,yeah" -o candidates/ track.mp3 transcript.json`.
 
 ## 3. Review and keep
 
@@ -44,7 +46,7 @@ Example for a different hook line: `push-it clips cut track.mp3 transcript.json 
 push-it clips review candidates/
 ```
 
-Each candidate plays; answer `k` (keep), `s` (skip), `r` (replay), or `q` (quit). Keepers are moved into your configured clips dir (`--keep-to DIR` to choose another). Whisper timestamps are good, not perfect - expect to skip a few clipped or mistimed ones.
+Each candidate plays; answer `k` (keep), `s` (skip), `r` (replay), or `q` (quit). Keepers are moved into your configured clips dir, or use `push-it clips review --keep-to DIR candidates/` to choose another (flags go before the file argument here too). Whisper timestamps are good, not perfect - expect to skip a few clipped or mistimed ones.
 
 Quit with `q` any time; re-running `push-it clips review candidates/` skips the ones you already kept.
 

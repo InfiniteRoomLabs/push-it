@@ -19,5 +19,5 @@ Frame thickness 14 px, one full rainbow rotation every 2 s, opacity pulsing betw
 
 ## Control
 
-- `push-it glow --duration 3.5` shows it on demand.
+- `push-it glow --duration 3.5s` shows it on demand. In this release, with no backend compiled in, it prints `no glow backend on this platform/build` and does nothing else.
 - `NO_GLOW=1 git push` skips it once.
