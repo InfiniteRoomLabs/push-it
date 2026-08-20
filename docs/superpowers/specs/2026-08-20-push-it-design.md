@@ -42,7 +42,8 @@ internal/installer/                component selection, hook wiring, extension/h
 glow/gnome/pushit-glow@infiniteroomlabs.com/   GNOME Shell extension (GNOME 45+ ESM); embedded via go:embed
 glow/gnome/tests/                  gjs unit tests for the extension's pure math module
 glow/macos/                        Swift helper source; built by CI into a universal binary; embedded via go:embed (darwin only)
-tools/clipper/                     transcribe.py · cut.py · review.py (uv PEP 723 scripts; dev-time only)
+tools/clipper/                     transcribe.py (uv PEP 723; the only Python, dev-time only)
+internal/clipper/                  phrase grouping + WAV cutting + review loop (`push-it clips …`)
 docs/                              install.md · make-your-own-clips.md · hue.md · glow.md · migrating.md
 install.sh                         POSIX sh bootstrap: detect OS/arch → download release → run `push-it install "$@"`
 .github/workflows/                 ci.yml · release.yml
@@ -61,6 +62,7 @@ mise.toml                          pinned dev toolchain (go, goreleaser, staticc
 | `push-it install [--sound] [--hue] [--glow] [--all] [--yes]` | Install selected components. With no component flags: interactive yes/no per component. |
 | `push-it uninstall [--yes]` | Reverse exactly what install did. |
 | `push-it doctor` | Report: config path, enabled components, clips found, audio backend OK, Hue reachable, glow backend available. |
+| `push-it clips cut …` / `push-it clips review …` | Clip toolkit; see below. |
 | `push-it version` | Semver + commit. |
 
 All subcommands are stdlib `flag` subcommand sets; no CLI framework.
@@ -135,22 +137,23 @@ Contract: `glow.Run(ctx, duration time.Duration) error`. The backend is chosen a
 
 `install.sh` is a dependency-free POSIX sh script for `curl -fsSL .../install.sh | sh -s -- --all`: detect `uname -s`/`uname -m`, map to a release asset, download the tarball plus `checksums.txt`, verify with `sha256sum`/`shasum`, place the binary in `~/.local/bin` (creating it, warning if not on PATH), then `exec push-it install "$@"`. `go install github.com/InfiniteRoomLabs/push-it/cmd/push-it@latest` is the documented alternative.
 
-## Clip toolkit (`tools/clipper/`)
+## Clip toolkit
 
-The existing three scripts, made reusable:
+No ffmpeg anywhere. Cutting and reviewing live in the binary, which already decodes and plays audio; only transcription needs Python.
 
-- `transcribe.py SOURCE [--model small.en] -o transcript.json` — faster-whisper word-level timestamps.
-- `cut.py SOURCE transcript.json [--phrase push it] [--allow real good] [--gap 0.5] [--max 4.0] [--pad 0.3] -o candidates/` — groups words into phrases that start with the target phrase, writes `clip_NNN.mp3` via ffmpeg and a `candidates.json` manifest with start/end/label.
-- `review.py candidates/ --keep-to clips/` — plays each candidate (via `push-it play --file` so it uses the same audio path as the hook, falling back to ffplay), asks keep/skip/replay/quit, and moves keepers into the target clips dir with a descriptive filename (`003-push-it-push-it-real-good.mp3`).
+- `tools/clipper/transcribe.py SOURCE [--model small.en] -o transcript.json` — PEP 723 script run with `uv run`; faster-whisper word-level timestamps. Its `av` wheel bundles ffmpeg's libraries, so no system ffmpeg is required.
+- `push-it clips cut SOURCE transcript.json [--phrase "push it"] [--allow real,good] [--gap 0.5] [--max 4.0] [--pad 0.3] -o candidates/` — groups words into phrases that start with the target phrase (same rules as the current script), decodes the source (MP3 via go-mp3 or WAV), slices by timestamp, and writes 16-bit PCM WAV clips `NNN-<label>.wav` plus `candidates.json`. Source must be MP3 or WAV; the docs say to convert anything else once with whatever tool you have.
+- `push-it clips review candidates/ --keep-to <clips dir>` — plays each candidate through the same player the hook uses, prompts keep / skip / replay / quit, and moves keepers into the clips dir.
 
-Each is a PEP 723 script run with `uv run`; Python is a dev-time tool only and never part of the runtime. `docs/make-your-own-clips.md` walks through the pipeline end to end, states the copyright position plainly, and explains how to adapt `--phrase` for a different track.
+`docs/make-your-own-clips.md` walks through the pipeline end to end, states the copyright position plainly, and explains how to adapt `--phrase` for a different track.
 
 ## Testing
 
 - `go test ./...` on ubuntu, macos, windows runners:
   - `clips`: listing/filtering/picking over a temp dir; deterministic with a seeded RNG.
-  - `player`: WAV header parsing and duration math on tiny generated fixtures; MP3 duration via a 0.1 s fixture generated at test setup (`ffmpeg` if present, otherwise skipped).
+  - `player`: WAV header parsing and duration math on tiny generated fixtures; MP3 decoding via a tiny committed fixture (a 0.1 s silent MP3, a few hundred bytes).
   - `hue`: full burst against `httptest.Server` asserting the request sequence and that the final PUT restores the saved state; failure paths (timeout, bad JSON) return without panicking.
+  - `clipper`: phrase grouping over a synthetic transcript (start/end/label, gap and max-duration cut-offs), and cutting a generated sine-wave WAV into correctly timed clips.
   - `glow/paint`: frame geometry (pixels inside the frame are opaque, interior is transparent), hue rotation advances, alpha pulse bounds.
   - `glow` (linux/darwin): the backend calls the expected command line via an injected exec interface.
   - `installer`: temp `HOME`/`XDG_CONFIG_HOME` and a temp git repo; assert hooksPath handling in both branches, marker idempotency, and that `uninstall` returns the filesystem and git config to the starting state.
