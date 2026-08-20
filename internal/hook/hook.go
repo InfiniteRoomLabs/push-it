@@ -95,6 +95,10 @@ func Run(ctx context.Context, sound, hue, glowOn bool, d Deps, logf func(string,
 	wg.Wait()
 }
 
+// startCommand is a seam over (*exec.Cmd).Start so tests can assert PrePush
+// spawns the right command without paying for a real fork/exec.
+var startCommand = func(cmd *exec.Cmd) error { return cmd.Start() }
+
 // PrePush is what git invokes. It must return in milliseconds and must not
 // block a push: it drains stdin, honours NO_PUSH_IT, and re-execs exe as a
 // detached "hook --run". It is best-effort - if the log file can't be
@@ -115,9 +119,11 @@ func PrePush(stdin io.Reader, getenv func(string) string, exe, logPath string) e
 	// else: leave Stdout/Stderr nil - exec redirects the child to the null
 	// device rather than failing the push over a log file we can't open.
 	detach(cmd)
-	if err := cmd.Start(); err != nil {
+	if err := startCommand(cmd); err != nil {
 		return err
 	}
-	_ = cmd.Process.Release()
+	if cmd.Process != nil {
+		_ = cmd.Process.Release()
+	}
 	return nil
 }

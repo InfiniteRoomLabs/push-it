@@ -51,7 +51,7 @@ func Review(in io.Reader, out io.Writer, play func(*player.Clip) error, candDir,
 			}
 			switch strings.ToLower(strings.TrimSpace(sc.Text())) {
 			case "k":
-				if err := os.Rename(src, filepath.Join(keepTo, p.File)); err != nil {
+				if err := moveFile(src, filepath.Join(keepTo, p.File)); err != nil {
 					return kept, err
 				}
 				kept++
@@ -71,4 +71,36 @@ func Review(in io.Reader, out io.Writer, play func(*player.Clip) error, candDir,
 		}
 	}
 	return kept, nil
+}
+
+// moveFile moves src to dst, falling back to a copy when the rename fails
+// (os.Rename returns EXDEV when src and dst are on different filesystems -
+// candidates/ and keepTo commonly are not).
+func moveFile(src, dst string) error {
+	if err := os.Rename(src, dst); err == nil {
+		return nil
+	}
+	return copyThenRemove(src, dst)
+}
+
+// copyThenRemove copies src to dst then removes src. It is moveFile's
+// cross-filesystem fallback.
+func copyThenRemove(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		return err
+	}
+	if err := out.Close(); err != nil {
+		return err
+	}
+	return os.Remove(src)
 }

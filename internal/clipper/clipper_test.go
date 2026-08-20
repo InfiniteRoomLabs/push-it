@@ -130,6 +130,28 @@ func TestReviewResumesPastAlreadyReviewed(t *testing.T) {
 	}
 }
 
+// TestCopyThenRemoveFallback covers moveFile's cross-filesystem fallback
+// directly (os.Rename's EXDEV isn't practical to force in a unit test): a
+// plain copy-then-remove must produce the same result as a rename.
+func TestCopyThenRemoveFallback(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src.txt")
+	dst := filepath.Join(dir, "dst.txt")
+	if err := os.WriteFile(src, []byte("hello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := copyThenRemove(src, dst); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(dst)
+	if err != nil || string(got) != "hello" {
+		t.Fatalf("dst content = %q, err = %v", got, err)
+	}
+	if _, err := os.Stat(src); err == nil {
+		t.Fatal("src should be removed")
+	}
+}
+
 func TestFileNameSanitizesLabel(t *testing.T) {
 	got := fileName(Phrase{ID: 1, Label: `push it 24/7 "now"`})
 	if got != "001-push-it-24-7-now.wav" {

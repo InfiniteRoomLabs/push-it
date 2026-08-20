@@ -32,7 +32,8 @@ func play(ctx context.Context, c *Clip, volume float64) error {
 	}
 	defer client.Close()
 
-	total := len(c.PCM) / 2 // int16 samples, interleaved across channels
+	total := len(c.PCM) / 2     // int16 samples, interleaved across channels
+	total -= total % c.Channels // drop a trailing partial frame rather than hand pulse a split sample
 	pos := 0
 	reader := pulse.Int16Reader(func(buf []int16) (int, error) {
 		if pos >= total {

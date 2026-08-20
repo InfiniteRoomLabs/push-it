@@ -27,7 +27,7 @@ type Options struct {
 	Max    float64  // max phrase length (s)
 }
 
-// DefaultOptions matches the Salt-N-Pepa use case.
+// DefaultOptions matches the default "push it" phrase.
 func DefaultOptions() Options {
 	return Options{Phrase: []string{"push", "it"}, Allow: []string{"real", "good"}, Gap: 0.5, Max: 4.0}
 }
