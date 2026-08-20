@@ -180,6 +180,31 @@ func TestWireRewiresAfterUserUnsetsHooksPath(t *testing.T) {
 	}
 }
 
+func TestUnwireLeavesUserHooksPathAlone(t *testing.T) {
+	cfgDir, g := setup(t)
+	var st config.InstallState
+	if err := WireHook(g, cfgDir, "/opt/push-it", &st); err != nil {
+		t.Fatal(err)
+	}
+	ourHooks := filepath.Join(cfgDir, "hooks")
+
+	// user takes over core.hooksPath themselves after our install
+	userHooks := filepath.Join(t.TempDir(), "userhooks")
+	if err := g.Set("core.hooksPath", userHooks); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := UnwireHook(g, &st); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := g.Get("core.hooksPath"); got != userHooks {
+		t.Fatalf("core.hooksPath = %q, want untouched user value %q", got, userHooks)
+	}
+	if _, err := os.Stat(filepath.Join(ourHooks, "pre-push")); err == nil {
+		t.Fatal("our pre-push should be removed")
+	}
+}
+
 func TestWireExpandsTildeHooksPath(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("~ expansion assumes HOME is the tilde target, not true on Windows")

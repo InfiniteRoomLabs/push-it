@@ -99,8 +99,14 @@ func UnwireHook(g Git, st *config.InstallState) error {
 	case st.HooksPathSetByUs:
 		_ = os.Remove(filepath.Join(st.HooksPath, "pre-push"))
 		_ = os.Remove(st.HooksPath) // only succeeds if empty  -  never deletes user files
-		if err := g.Unset("core.hooksPath"); err != nil {
+		// Only unset core.hooksPath if it's still what we set - the user may
+		// have since pointed it somewhere else themselves.
+		if live, err := g.Get("core.hooksPath"); err != nil {
 			return err
+		} else if expandHome(live) == st.HooksPath {
+			if err := g.Unset("core.hooksPath"); err != nil {
+				return err
+			}
 		}
 	case st.PrePushAppendedTo != "" && st.PrePushCreatedByUs:
 		if err := os.Remove(st.PrePushAppendedTo); err != nil && !errors.Is(err, fs.ErrNotExist) {
