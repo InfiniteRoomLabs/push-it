@@ -51,6 +51,21 @@ suite('hsvToRgb primaries', () => {
     assertEqual(JSON.stringify(M.hsvToRgb(2 / 3)), '[0,0,1]', 'blue');
 });
 
+suite('stripGradient corner continuity and ordering', () => {
+    const w = 200, h = 100, p = 2 * (w + h);
+    const tol = 1 / p + 1e-9;
+    const [top, right, bottom, left] = M.stripGradient(w, h);
+    for (const [name, s] of [['top', top], ['right', right], ['bottom', bottom], ['left', left]]) {
+        assert(s.p0 < s.p1, `${name} p0 < p1`);
+    }
+    assertApprox(top.p1, right.p0, tol, 'top end == right start');
+    assertApprox(right.p1, bottom.p0, tol, 'right end == bottom start');
+    assertApprox(bottom.p1, left.p0, tol, 'bottom end == left start');
+    assertApprox(left.p1, p / p, tol, 'left end wraps to top start (1 == 0 mod 1)');
+    assert(bottom.x0 > bottom.x1, 'bottom strip runs right to left');
+    assert(left.y0 > left.y1, 'left strip runs bottom to top');
+});
+
 suite('edgeStops', () => {
     const stops = M.edgeStops(0, 0.25, 0, 5);
     assertEqual(stops.length, 5, 'count');

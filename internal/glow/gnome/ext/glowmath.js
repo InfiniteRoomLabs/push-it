@@ -69,3 +69,39 @@ export function edgeStops(startPos, endPos, elapsedMs, n = 16) {
     }
     return stops;
 }
+
+// stripGradient returns the four frame strips (top, right, bottom, left) to
+// draw. Each entry is the strip's fill rectangle {x, y, sw, sh} plus its
+// perimeter-clockwise gradient line: (x0, y0) is the strip's clockwise-start
+// corner, (x1, y1) its clockwise-end corner (top: left->right; right:
+// top->bottom; bottom: right->left; left: bottom->top), with p0 < p1 the
+// perimeter positions at those two corners.
+//
+// The gradient line always spans a strip's full corner-to-corner run (e.g.
+// (w,0) to (w,h) for the right strip), even though the fill rectangle is
+// inset by the frame thickness on its short ends - Cairo samples the line at
+// the fraction corresponding to the filled region, so adjacent strips stay
+// color-continuous at the corners.
+//
+// p0/p1 are computed with the OWNING band's own formula (mirroring
+// perimeterPos's four branches) rather than by calling perimeterPos at the
+// corner: a rectangle corner sits exactly on a precedence boundary (e.g.
+// (w, h) is claimed by the bottom band per perimeterPos's top/bottom/right/
+// left precedence), so routing through perimeterPos there would silently
+// substitute the neighbor band's value. Evaluating each strip's own formula
+// keeps every corner-to-corner gap to at most 1/(2*(w+h)) - the same
+// pixel-level rounding already present in the band formulas themselves.
+export function stripGradient(w, h) {
+    const p = 2 * (w + h);
+    const t = FRAME_THICKNESS;
+    const top = x => x / p;
+    const right = y => (w + y) / p;
+    const bottom = x => (w + h + (w - 1 - x)) / p;
+    const left = y => (2 * w + h + (h - 1 - y)) / p;
+    return [
+        { x: 0, y: 0, sw: w, sh: t, x0: 0, y0: 0, x1: w, y1: 0, p0: top(0), p1: top(w) },
+        { x: w - t, y: t, sw: t, sh: h - 2 * t, x0: w, y0: 0, x1: w, y1: h, p0: right(0), p1: right(h) },
+        { x: 0, y: h - t, sw: w, sh: t, x0: w, y0: h, x1: 0, y1: h, p0: bottom(w), p1: bottom(0) },
+        { x: 0, y: t, sw: t, sh: h - 2 * t, x0: 0, y0: h, x1: 0, y1: 0, p0: left(h), p1: left(0) },
+    ];
+}
