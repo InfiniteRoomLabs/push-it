@@ -3625,7 +3625,7 @@ NO_PUSH_IT=1 git push      # quiet push
 - [ ] **Step 9: Verify and commit**
 
 Run: `go test ./... && mise run lint`
-Then scan for operator-specific strings before anything becomes public: `grep -rniE '100\.[0-9]+\.|<user>|\.lab\.|internal\.|/home/' --exclude-dir=.git . ; echo "exit $?"`  -  expected: no matches (exit 1).
+Then scan for operator-specific strings before anything becomes public: resolve the redaction term list with the agent-ops helper (`resolve-redaction-terms.py`) and grep the tree against it (excluding `.git/` and `.superpowers/`) - expected: no matches.
 
 CHANGELOG `### Added`: `- Docs: install, make-your-own-clips, hue, glow, migrating; \`tools/clipper/transcribe.py\`; GitHub Actions CI (lint, no-cgo cross-compile, tests on Linux/macOS/Windows).`
 
@@ -3662,7 +3662,7 @@ git remote add github git@github.com:InfiniteRoomLabs/push-it.git
 git remote -v
 ```
 
-(The Gitea hostname above is the operator's private remote and appears only in this local command, never in committed files.)
+(Substitute the private Gitea host at the keyboard; it must never be committed.)
 
 - [ ] **Step 3: Push and confirm CI is green**
 
