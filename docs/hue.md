@@ -15,7 +15,7 @@ You need the bridge address, an API key, and a light ID.
 
    The response contains `"username": "<key>"`.
 3. List lights to find the ID: `curl -sk https://<bridge>/api/<key>/lights | jq 'map_values(.name)'`.
-4. `push-it install --hue` and answer the prompts, or set `PUSH_IT_HUE_BRIDGE`, `PUSH_IT_HUE_KEY`, `PUSH_IT_HUE_LIGHT` in the environment - env values override the config file, so the key can live in your secret manager instead of on disk.
+4. `push-it install --hue` and answer the prompts, or set `PUSH_IT_HUE_BRIDGE`, `PUSH_IT_HUE_KEY`, `PUSH_IT_HUE_LIGHT` in the environment - env values are applied on top of the config file and used as the prompt defaults, so the key can live in your secret manager instead of on disk. With `--yes`, env values configure Hue without prompting (Hue is skipped if bridge or key is still empty). Either way, run `push-it install --hue` once so the bridge certificate gets pinned.
 
 `push-it hue` fires the burst on demand; `push-it doctor` checks reachability.
 

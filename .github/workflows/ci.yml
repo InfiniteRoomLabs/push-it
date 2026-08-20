@@ -21,7 +21,7 @@ jobs:
       - run: go vet ./...
       - uses: dominikh/staticcheck-action@v1
         with:
-          version: latest
+          version: "2026.2"
           install-go: false
       - name: cross-compile without cgo
         env:
@@ -43,3 +43,5 @@ jobs:
         with:
           go-version-file: go.mod
       - run: go test ./...
+      - if: matrix.os == 'ubuntu-latest'
+        run: go test -race ./...
