@@ -114,6 +114,70 @@ func TestWireCreatesPrePushInExistingHooksPath(t *testing.T) {
 	}
 }
 
+func TestWireRefusesNonShellHook(t *testing.T) {
+	cfgDir, g := setup(t)
+	hooks := filepath.Join(t.TempDir(), "myhooks")
+	_ = os.MkdirAll(hooks, 0o755)
+	orig := "#!/usr/bin/env python3\nprint('hi')\n"
+	file := filepath.Join(hooks, "pre-push")
+	_ = os.WriteFile(file, []byte(orig), 0o755)
+	_ = g.Set("core.hooksPath", hooks)
+
+	var st config.InstallState
+	err := WireHook(g, cfgDir, "/opt/push-it", &st)
+	if err == nil || !strings.Contains(err.Error(), "not a shell script") {
+		t.Fatalf("err = %v, want a \"not a shell script\" error", err)
+	}
+	b, _ := os.ReadFile(file)
+	if string(b) != orig {
+		t.Fatalf("file was modified:\n%s", b)
+	}
+}
+
+func TestWireAppendsToEnvBashShebangHook(t *testing.T) {
+	cfgDir, g := setup(t)
+	hooks := filepath.Join(t.TempDir(), "myhooks")
+	_ = os.MkdirAll(hooks, 0o755)
+	orig := "#!/usr/bin/env bash\necho existing\n"
+	file := filepath.Join(hooks, "pre-push")
+	_ = os.WriteFile(file, []byte(orig), 0o755)
+	_ = g.Set("core.hooksPath", hooks)
+
+	var st config.InstallState
+	if err := WireHook(g, cfgDir, "/opt/push-it", &st); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(file)
+	if !strings.HasPrefix(string(b), orig) || !strings.Contains(string(b), MarkerStart) {
+		t.Fatalf("hook content:\n%s", b)
+	}
+}
+
+func TestWireAppendMakesHookExecutable(t *testing.T) {
+	cfgDir, g := setup(t)
+	hooks := filepath.Join(t.TempDir(), "myhooks")
+	_ = os.MkdirAll(hooks, 0o755)
+	orig := "#!/bin/sh\necho existing\n"
+	file := filepath.Join(hooks, "pre-push")
+	_ = os.WriteFile(file, []byte(orig), 0o644)
+	_ = g.Set("core.hooksPath", hooks)
+
+	var st config.InstallState
+	if err := WireHook(g, cfgDir, "/opt/push-it", &st); err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS == "windows" {
+		return // no exec-bit semantics to assert
+	}
+	info, err := os.Stat(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm()&0o111 == 0 {
+		t.Fatalf("hook not executable after append: %v", info.Mode())
+	}
+}
+
 func TestBlockEscapesSingleQuotes(t *testing.T) {
 	b := Block("/x/it's/push-it")
 	if !strings.Contains(b, `'/x/it'\''s/push-it' hook pre-push`) {

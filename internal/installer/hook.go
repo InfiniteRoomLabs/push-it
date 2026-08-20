@@ -23,6 +23,26 @@ func Block(exe string) string {
 	return fmt.Sprintf("%s\n'%s' hook pre-push \"$@\" || true\n%s\n", MarkerStart, quoted, MarkerEnd)
 }
 
+// isShellInterpreter reports whether firstLine is either not a shebang line
+// (git runs a hook with no shebang via sh, so that's treated as shell) or a
+// shebang whose interpreter basename ends in "sh" - covering /bin/sh,
+// /bin/bash, /bin/dash, /bin/zsh, and the "#!/usr/bin/env <interp>" form of
+// each.
+func isShellInterpreter(firstLine string) bool {
+	if !strings.HasPrefix(firstLine, "#!") {
+		return true
+	}
+	fields := strings.Fields(strings.TrimPrefix(firstLine, "#!"))
+	if len(fields) == 0 {
+		return false
+	}
+	interp := fields[0]
+	if filepath.Base(interp) == "env" && len(fields) > 1 {
+		interp = fields[1]
+	}
+	return strings.HasSuffix(filepath.Base(interp), "sh")
+}
+
 func expandHome(p string) string {
 	if strings.HasPrefix(p, "~/") || p == "~" {
 		if home, err := os.UserHomeDir(); err == nil {
@@ -75,6 +95,9 @@ func WireHook(g Git, cfgDir, exe string, st *config.InstallState) error {
 		if err := os.WriteFile(file, []byte("#!/bin/sh\n"+Block(exe)), 0o755); err != nil {
 			return err
 		}
+		if err := os.Chmod(file, 0o755); err != nil {
+			return err
+		}
 		st.PrePushCreatedByUs = true
 	case err != nil:
 		return err
@@ -82,10 +105,20 @@ func WireHook(g Git, cfgDir, exe string, st *config.InstallState) error {
 		// already wired; idempotent
 	default:
 		content := string(existing)
+		firstLine := content
+		if i := strings.IndexByte(content, '\n'); i >= 0 {
+			firstLine = content[:i]
+		}
+		if !isShellInterpreter(firstLine) {
+			return fmt.Errorf("installer: existing hook %s is not a shell script (%q); push-it cannot append safely - add this line to it yourself:\n%s", file, firstLine, Block(exe))
+		}
 		if !strings.HasSuffix(content, "\n") {
 			content += "\n"
 		}
 		if err := os.WriteFile(file, []byte(content+Block(exe)), 0o755); err != nil {
+			return err
+		}
+		if err := os.Chmod(file, 0o755); err != nil {
 			return err
 		}
 	}
