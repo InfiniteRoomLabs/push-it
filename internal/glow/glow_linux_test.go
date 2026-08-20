@@ -40,6 +40,7 @@ func TestBackendIsGnome(t *testing.T) {
 }
 
 func TestRunCallsGdbusAndBlocksForDuration(t *testing.T) {
+	t.Setenv("XDG_CURRENT_DESKTOP", "ubuntu:GNOME")
 	calls := stubExec(t, []byte("()\n"), nil)
 	start := time.Now()
 	if err := Run(context.Background(), 80*time.Millisecond); err != nil {
@@ -56,6 +57,7 @@ func TestRunCallsGdbusAndBlocksForDuration(t *testing.T) {
 }
 
 func TestRunReturnsErrorWhenGdbusFails(t *testing.T) {
+	t.Setenv("XDG_CURRENT_DESKTOP", "ubuntu:GNOME")
 	stubExec(t, []byte("Error: GDBus.Error:org.freedesktop.DBus.Error.UnknownMethod"), errors.New("exit status 1"))
 	err := Run(context.Background(), 10*time.Millisecond)
 	if err == nil || !strings.Contains(err.Error(), "extension") {
@@ -64,6 +66,7 @@ func TestRunReturnsErrorWhenGdbusFails(t *testing.T) {
 }
 
 func TestRunStopsOnContextCancel(t *testing.T) {
+	t.Setenv("XDG_CURRENT_DESKTOP", "ubuntu:GNOME")
 	stubExec(t, nil, nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() { time.Sleep(20 * time.Millisecond); cancel() }()
@@ -75,6 +78,7 @@ func TestRunStopsOnContextCancel(t *testing.T) {
 }
 
 func TestInstallExtractsEnablesAndNotes(t *testing.T) {
+	t.Setenv("XDG_CURRENT_DESKTOP", "ubuntu:GNOME")
 	calls := stubExec(t, nil, nil)
 	data := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", data)
@@ -102,6 +106,7 @@ func TestInstallExtractsEnablesAndNotes(t *testing.T) {
 }
 
 func TestInstallIsIdempotentAndUninstallReverses(t *testing.T) {
+	t.Setenv("XDG_CURRENT_DESKTOP", "ubuntu:GNOME")
 	calls := stubExec(t, nil, nil)
 	data := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", data)
@@ -128,6 +133,7 @@ func TestInstallIsIdempotentAndUninstallReverses(t *testing.T) {
 }
 
 func TestInstallWithoutGnomeExtensionsCLIStillExtracts(t *testing.T) {
+	t.Setenv("XDG_CURRENT_DESKTOP", "ubuntu:GNOME")
 	stubExec(t, nil, nil)
 	lookPath = func(string) (string, error) { return "", errors.New("not found") }
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
@@ -135,6 +141,39 @@ func TestInstallWithoutGnomeExtensionsCLIStillExtracts(t *testing.T) {
 	note, err := Install(&st)
 	if err != nil || !strings.Contains(note, "gnome-extensions enable") {
 		t.Fatalf("note=%q err=%v", note, err)
+	}
+}
+
+func TestInstallRefusesNonGnomeSession(t *testing.T) {
+	t.Setenv("XDG_CURRENT_DESKTOP", "KDE")
+	calls := stubExec(t, nil, nil)
+	data := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", data)
+	var st config.InstallState
+	_, err := Install(&st)
+	if err == nil || !strings.Contains(err.Error(), "not a GNOME session") {
+		t.Fatalf("err = %v, want a not-a-GNOME-session error", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(data, "gnome-shell", "extensions", gnome.UUID)); !os.IsNotExist(statErr) {
+		t.Fatal("extension dir should not have been created")
+	}
+	if st.GnomeExtensionInstalled {
+		t.Fatal("state should not be recorded")
+	}
+	if len(*calls) != 0 {
+		t.Fatalf("runCommand should not have been called, got %v", *calls)
+	}
+}
+
+func TestRunRefusesNonGnomeSession(t *testing.T) {
+	t.Setenv("XDG_CURRENT_DESKTOP", "KDE")
+	calls := stubExec(t, nil, nil)
+	err := Run(context.Background(), 10*time.Millisecond)
+	if err == nil || !strings.Contains(err.Error(), "not a GNOME session") {
+		t.Fatalf("err = %v, want a not-a-GNOME-session error", err)
+	}
+	if len(*calls) != 0 {
+		t.Fatalf("runCommand should not have been called, got %v", *calls)
 	}
 }
 

@@ -22,7 +22,10 @@ var (
 	runCommand = func(ctx context.Context, name string, args ...string) ([]byte, error) {
 		return exec.CommandContext(ctx, name, args...).CombinedOutput()
 	}
-	lookPath = exec.LookPath
+	lookPath       = exec.LookPath
+	isGnomeSession = func() bool {
+		return strings.Contains(strings.ToLower(os.Getenv("XDG_CURRENT_DESKTOP")), "gnome")
+	}
 )
 
 func init() {
@@ -47,6 +50,9 @@ func extensionDir() (string, error) {
 // runGnome asks the Shell extension to start the glow, then blocks for d so
 // the caller's WaitGroup keeps the glow alive for the clip.
 func runGnome(ctx context.Context, d time.Duration) error {
+	if !isGnomeSession() {
+		return errors.New("glow: not a GNOME session; screen glow on Linux requires GNOME Shell")
+	}
 	if _, err := lookPath("gdbus"); err != nil {
 		return errors.New("glow: gdbus not found (is this a GNOME session?)")
 	}
@@ -70,6 +76,9 @@ func runGnome(ctx context.Context, d time.Duration) error {
 func installGnome(st *config.InstallState) (string, error) {
 	if st == nil {
 		return "", errors.New("glow: nil install state")
+	}
+	if !isGnomeSession() {
+		return "", fmt.Errorf("glow: not a GNOME session (XDG_CURRENT_DESKTOP=%q); screen glow on Linux requires GNOME Shell", os.Getenv("XDG_CURRENT_DESKTOP"))
 	}
 	dir, err := extensionDir()
 	if err != nil {
