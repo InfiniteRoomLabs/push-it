@@ -55,6 +55,38 @@ func testClient(srv *httptest.Server) *Client {
 	return c
 }
 
+// TestTransportErrorRedactsKey covers a transport-level failure (bridge
+// unreachable): the returned error must never contain the raw API key, even
+// though the key sits in the request's URL path.
+func TestTransportErrorRedactsKey(t *testing.T) {
+	srv, _ := newServer(t)
+	c := testClient(srv)
+	srv.Close()
+	err := c.Ping(context.Background())
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if strings.Contains(err.Error(), "KEY") {
+		t.Fatalf("key leaked into error: %v", err)
+	}
+	if !strings.Contains(err.Error(), "<key>") {
+		t.Fatalf("expected redacted path marker in error: %v", err)
+	}
+}
+
+// TestNoCertPinnedRefusesEveryRequest covers an empty pin (install ran while
+// the bridge was down, or a hand-edited config): every request must fail
+// with a clear message instead of the opaque fingerprint-mismatch error.
+func TestNoCertPinnedRefusesEveryRequest(t *testing.T) {
+	srv, _ := newServer(t)
+	c := New("ignored", "KEY", 1, "")
+	c.BaseURL = srv.URL
+	err := c.Ping(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "no bridge certificate pinned") {
+		t.Fatalf("err = %v, want \"no bridge certificate pinned\"", err)
+	}
+}
+
 func TestPinnedTransportRejectsOtherCert(t *testing.T) {
 	srv, _ := newServer(t)
 	c := New("ignored", "KEY", 1, strings.Repeat("00", 32))

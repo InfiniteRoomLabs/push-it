@@ -14,6 +14,8 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 )
 
@@ -38,6 +40,9 @@ func pinned(certSHA256 string) *tls.Config {
 		MinVersion:         tls.VersionTLS12,
 		InsecureSkipVerify: true, // chain verification is replaced by the fingerprint pin below
 		VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
+			if certSHA256 == "" {
+				return errors.New("hue: no bridge certificate pinned; run push-it install --hue")
+			}
 			if len(rawCerts) == 0 {
 				return errors.New("hue: server sent no certificate")
 			}
@@ -96,6 +101,29 @@ func (c *Client) lightURL() string {
 	return fmt.Sprintf("%s/api/%s/lights/%d", c.BaseURL, c.Key, c.Light)
 }
 
+// redact replaces the API key segment of a Hue request path
+// (/api/<key>/lights/...) with "<key>" so the key never lands in a log line
+// or error message.
+func redact(path string) string {
+	parts := strings.SplitN(path, "/", 4)
+	if len(parts) >= 3 && parts[1] == "api" {
+		parts[2] = "<key>"
+	}
+	return strings.Join(parts, "/")
+}
+
+// transportErr wraps a c.HTTP.Do failure with the request path redacted -
+// the Hue v1 API carries the key in the URL path, and *url.Error stringifies
+// the full URL, so the raw error must never be returned as-is.
+func transportErr(req *http.Request, err error) error {
+	unwrapped := err
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) {
+		unwrapped = urlErr.Err
+	}
+	return fmt.Errorf("hue: %s %s: %w", req.Method, redact(req.URL.Path), unwrapped)
+}
+
 func (c *Client) get(ctx context.Context, v any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.lightURL(), nil)
 	if err != nil {
@@ -103,7 +131,7 @@ func (c *Client) get(ctx context.Context, v any) error {
 	}
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
-		return err
+		return transportErr(req, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -123,7 +151,7 @@ func (c *Client) put(ctx context.Context, body any) error {
 	}
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
-		return err
+		return transportErr(req, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
