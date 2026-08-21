@@ -65,7 +65,7 @@ jobs:
         env:
           CGO_ENABLED: "0"
         run: |
-          go build -tags glowhelper ./cmd/push-it
+          go build -tags glowhelper -o /dev/null ./cmd/push-it
           go test -tags glowhelper ./internal/glow/...
       - uses: actions/upload-artifact@v4
         with:

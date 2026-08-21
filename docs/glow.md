@@ -8,10 +8,10 @@ All three renderers mirror `internal/glow/paint` (the reference renderer): the G
 
 | Platform | Backend | Status |
 |---|---|---|
-| Linux / GNOME 45+ | Shell extension, triggered over D-Bus | shipped (extension extracted and enabled by `install --glow`; log out and back in once - Wayland cannot hot-load extensions); `push-it install --glow` refuses clearly on non-GNOME sessions |
+| Linux / GNOME 46+ | Shell extension, triggered over D-Bus | shipped (extension extracted and enabled by `install --glow`; log out and back in once - Wayland cannot hot-load extensions); `push-it install --glow` refuses clearly on non-GNOME sessions |
 | macOS | helper app (Cocoa / Core Animation), universal binary | shipped in release binaries built with `-tags glowhelper`; a plain `go install`/`go build` (no build tag) prints "built without -tags glowhelper" instead of drawing anything |
 | Windows | in-process layered window | shipped, visual verification pending |
-| Linux / KDE, wlroots, X11 | - | not planned for v1; glow is a silent no-op |
+| Linux / KDE, wlroots, X11 | - | not supported - `install --glow` refuses with a clear message and the hook logs an error |
 
 `push-it doctor` shows `glow: enabled=... backend=gnome|macos|windows|none`.
 

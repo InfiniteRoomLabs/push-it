@@ -21,7 +21,7 @@ internal/clips/       list + random pick of *.mp3/*.wav
 internal/player/      pure-Go MP3/WAV decode; playback via oto (macOS/Windows) or a PulseAudio/PipeWire client (Linux)
 internal/hue/         Hue v1 API: save state -> rainbow -> restore; trust-on-first-use certificate pin
 internal/lockfile/    exclusive-create lock with stale takeover and owner-checked release
-internal/glow/        animation constants + backend hook points (Run/Install/Uninstall set by build-tagged files)
+internal/glow/         backend hook points (Run/Install/Uninstall set by build-tagged files); animation constants are defined in paint and re-exported here
 internal/glow/paint/  reference renderer; every backend mirrors its math
 internal/hook/        kill switches, sound || hue || glow orchestration, detached pre-push entry
 internal/clipper/     transcript -> phrase grouping -> WAV cutting -> keep/skip review
@@ -37,7 +37,7 @@ docs/                 user docs (install, make-your-own-clips, hue, glow, migrat
 - `mise run test` - `go test ./...` (CI also runs `-race` on Linux)
 - `mise run lint` - gofmt, `go vet`, staticcheck (all must be clean before a commit)
 - `mise run build` - `bin/push-it`
-- `mise run glow:gnome:test` - gjs tests for the GNOME extension math (when present)
+- `mise run glow:gnome:test` - gjs tests for the GNOME extension math
 - Cross-compile check used everywhere: `CGO_ENABLED=0 GOOS=<os> GOARCH=<arch> go build ./...` for linux/darwin/windows x amd64/arm64
 
 ## Hard rules

@@ -1,5 +1,5 @@
 // Package paint is the reference renderer for the glow frame: a rainbow
-// that travels clockwise around the screen edge while its opacity pulses.
+// that travels counter-clockwise around the screen edge while its opacity pulses.
 // The Windows backend uses it directly; the GNOME (JS) and macOS (Swift)
 // renderers mirror HueAt/OpacityAt/PerimeterPos exactly.
 package paint

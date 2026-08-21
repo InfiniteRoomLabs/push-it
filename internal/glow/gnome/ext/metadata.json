@@ -2,7 +2,7 @@
   "name": "push-it glow",
   "description": "Animated rainbow frame around the screen, triggered over D-Bus by push-it on git push.",
   "uuid": "pushit-glow@infiniteroomlabs.com",
-  "shell-version": ["46", "47", "48"],
+  "shell-version": ["46", "47", "48", "49", "50"],
   "url": "https://github.com/InfiniteRoomLabs/push-it",
   "version": 1,
   "version-name": "0.1.0"
