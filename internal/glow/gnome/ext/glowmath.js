@@ -1,34 +1,43 @@
-// Mirrors internal/glow/glow.go constants and internal/glow/paint math.
-// Keep the numbers identical to the Go source.
-export const FRAME_THICKNESS = 14;      // px
-export const ROTATION_PERIOD_MS = 2000; // one full trip around the frame
+// Mirrors internal/glow/paint/paint.go. Keep the numbers and formulas
+// identical to the Go reference.
+export const GLOW_WIDTH_AT_1080 = 96;   // px, at a 1080-logical-pixel shorter screen side
+export const FALLOFF_EXPONENT = 2;      // quadratic inward falloff
+export const ROTATION_PERIOD_MS = 2000; // one full trip around the perimeter
 export const PULSE_PERIOD_MS = 600;
 export const MIN_OPACITY = 0.55;
 export const MAX_OPACITY = 1.0;
 export const DEFAULT_DURATION_S = 3.5;
 
-// inFrame reports whether the pixel at (x, y) lies within the frame band of
-// thickness FRAME_THICKNESS around a w x h screen. Mirrors paint.InFrame.
-export function inFrame(x, y, w, h) {
-    const t = FRAME_THICKNESS;
-    return x < t || x >= w - t || y < t || y >= h - t;
+export const EDGE = { TOP: 0, BOTTOM: 1, LEFT: 2, RIGHT: 3 };
+
+// glowWidth is the glow's width in px for a w x h screen, scaled by the
+// shorter side so the glow reads consistently across resolutions.
+// Mirrors paint.GlowWidth.
+export function glowWidth(w, h) {
+    const m = Math.min(w, h);
+    const n = Math.round(m * GLOW_WIDTH_AT_1080 / 1080);
+    return n < 1 ? 1 : n;
 }
 
-// A pixel is assigned to the first matching band in this order: top
-// (y < t), bottom (y >= h-t), right (x >= w-t), left (x < t). All four
-// corner squares therefore belong to the top or bottom band. Renderers
-// that mirror this function must use the same order.
-export function perimeterPos(x, y, w, h) {
+// edgeAlpha is the glow's alpha contribution at distance d from an edge,
+// for a glow of the given width: 1 at the edge, falling to 0 at width.
+// Mirrors paint.EdgeAlpha.
+export function edgeAlpha(d, width) {
+    if (d < 0 || d >= width) return 0;
+    return Math.pow(1 - d / width, FALLOFF_EXPONENT);
+}
+
+// edgePos maps the point (x, y) on the given edge to its position in [0,1)
+// along the screen perimeter, clockwise from the top-left corner. Mirrors
+// paint.EdgePos.
+export function edgePos(edge, x, y, w, h) {
     const p = 2 * (w + h);
-    const t = FRAME_THICKNESS;
-    if (y < t) return x / p;
-    if (y >= h - t) return (w + h + (w - 1 - x)) / p;
-    if (x >= w - t) return (w + y) / p;
-    if (x < t) return (2 * w + h + (h - 1 - y)) / p;
-    // interior pixel: not part of the frame; callers check inFrame
-    // first. Returning the top-band value keeps the result
-    // deterministic and in [0,1).
-    return x / p;
+    switch (edge) {
+        case EDGE.TOP: return x / p;
+        case EDGE.RIGHT: return (w + y) / p;
+        case EDGE.BOTTOM: return (w + h + (w - 1 - x)) / p;
+        default: return (2 * w + h + (h - 1 - y)) / p; // LEFT
+    }
 }
 
 export function hueAt(p, elapsedMs) {
@@ -70,38 +79,59 @@ export function edgeStops(startPos, endPos, elapsedMs, n = 16) {
     return stops;
 }
 
-// stripGradient returns the four frame strips (top, right, bottom, left) to
-// draw. Each entry is the strip's fill rectangle {x, y, sw, sh} plus its
-// perimeter-clockwise gradient line: (x0, y0) is the strip's clockwise-start
-// corner, (x1, y1) its clockwise-end corner (top: left->right; right:
-// top->bottom; bottom: right->left; left: bottom->top), with p0 < p1 the
-// perimeter positions at those two corners.
+// stripGradient returns the four full-length edge strips (top, bottom, left,
+// right) to draw. Each entry is the strip's fill rectangle {x, y, sw, sh},
+// its clockwise hue-gradient line (x0, y0) -> (x1, y1) spanning the full
+// edge, the perimeter positions p0 < p1 at that line's two ends, and the
+// inward unit direction (nx, ny) used for the perpendicular alpha mask.
 //
-// The gradient line always spans a strip's full corner-to-corner run (e.g.
-// (w,0) to (w,h) for the right strip), even though the fill rectangle is
-// inset by the frame thickness on its short ends - Cairo samples the line at
-// the fraction corresponding to the filled region, so adjacent strips stay
-// color-continuous at the corners.
-//
-// p0/p1 are computed with the OWNING band's own formula (mirroring
-// perimeterPos's four branches) rather than by calling perimeterPos at the
-// corner: a rectangle corner sits exactly on a precedence boundary (e.g.
-// (w, h) is claimed by the bottom band per perimeterPos's top/bottom/right/
-// left precedence), so routing through perimeterPos there would silently
-// substitute the neighbor band's value. Evaluating each strip's own formula
-// keeps every corner-to-corner gap to at most 1/(2*(w+h)) - the same
-// pixel-level rounding already present in the band formulas themselves.
+// p0/p1 are computed with the OWNING edge's own edgePos formula at the
+// first/last pixel of that edge in clockwise order, not by evaluating
+// edgePos at the shared corner: a corner sits exactly on a precedence
+// boundary between two edges, so this keeps each strip's own values and
+// leaves at most a 1/(2*(w+h)) gap between adjacent strips at the corner -
+// the same pixel-level rounding already present in edgePos itself.
 export function stripGradient(w, h) {
-    const p = 2 * (w + h);
-    const t = FRAME_THICKNESS;
-    const top = x => x / p;
-    const right = y => (w + y) / p;
-    const bottom = x => (w + h + (w - 1 - x)) / p;
-    const left = y => (2 * w + h + (h - 1 - y)) / p;
+    const W = glowWidth(w, h);
     return [
-        { x: 0, y: 0, sw: w, sh: t, x0: 0, y0: 0, x1: w, y1: 0, p0: top(0), p1: top(w) },
-        { x: w - t, y: t, sw: t, sh: h - 2 * t, x0: w, y0: 0, x1: w, y1: h, p0: right(0), p1: right(h) },
-        { x: 0, y: h - t, sw: w, sh: t, x0: w, y0: h, x1: 0, y1: h, p0: bottom(w), p1: bottom(0) },
-        { x: 0, y: t, sw: t, sh: h - 2 * t, x0: 0, y0: h, x1: 0, y1: 0, p0: left(h), p1: left(0) },
+        {
+            edge: EDGE.TOP, x: 0, y: 0, sw: w, sh: W,
+            x0: 0, y0: 0, x1: w, y1: 0,
+            p0: edgePos(EDGE.TOP, 0, 0, w, h), p1: edgePos(EDGE.TOP, w - 1, 0, w, h),
+            nx: 0, ny: 1,
+        },
+        {
+            edge: EDGE.BOTTOM, x: 0, y: h - W, sw: w, sh: W,
+            x0: w, y0: h, x1: 0, y1: h,
+            p0: edgePos(EDGE.BOTTOM, w - 1, h - 1, w, h), p1: edgePos(EDGE.BOTTOM, 0, h - 1, w, h),
+            nx: 0, ny: -1,
+        },
+        {
+            edge: EDGE.LEFT, x: 0, y: 0, sw: W, sh: h,
+            x0: 0, y0: h, x1: 0, y1: 0,
+            p0: edgePos(EDGE.LEFT, 0, h - 1, w, h), p1: edgePos(EDGE.LEFT, 0, 0, w, h),
+            nx: 1, ny: 0,
+        },
+        {
+            edge: EDGE.RIGHT, x: w - W, y: 0, sw: W, sh: h,
+            x0: w, y0: 0, x1: w, y1: h,
+            p0: edgePos(EDGE.RIGHT, w - 1, 0, w, h), p1: edgePos(EDGE.RIGHT, w - 1, h - 1, w, h),
+            nx: -1, ny: 0,
+        },
     ];
+}
+
+// alphaStops returns 9 evenly spaced [offset, alpha] pairs from the edge
+// (offset 0, alpha 1) to the glow width (offset 1, alpha 0), quadratic
+// falloff. Used as the perpendicular mask gradient's color stops; the
+// gradient's own start/end points (edge to edge + width) supply the
+// physical distance, so the stops themselves are width-independent
+// fractions - mirrors paint.EdgeAlpha evaluated at width*offset.
+export function alphaStops(width) {
+    const stops = [];
+    for (let k = 0; k <= 8; k++) {
+        const off = k / 8;
+        stops.push([off, Math.pow(1 - off, FALLOFF_EXPONENT)]);
+    }
+    return stops;
 }
