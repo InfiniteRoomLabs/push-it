@@ -40,3 +40,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - GNOME extension: the first frame of the glow animation now starts at its pulsed opacity instead of full opacity, matching every subsequent frame.
+- `install`: a failed glow install now disables glow instead of leaving it enabled, and prints why.

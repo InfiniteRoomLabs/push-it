@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -34,7 +35,7 @@ func hueTestServer(t *testing.T) (bridge string, srv *httptest.Server) {
 }
 
 func TestDoctorOnFreshConfig(t *testing.T) {
-	t.Setenv("PUSH_IT_CONFIG_DIR", t.TempDir())
+	isolateInstall(t)
 	var out, errOut bytes.Buffer
 	if code := run([]string{"doctor"}, strings.NewReader(""), &out, &errOut); code != 0 {
 		t.Fatalf("code=%d stderr=%s", code, errOut.String())
@@ -50,10 +51,7 @@ func TestInstallAndUninstallSoundOnly(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not installed")
 	}
-	tmp := t.TempDir()
-	t.Setenv("PUSH_IT_CONFIG_DIR", filepath.Join(tmp, "cfg"))
-	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(tmp, "gitconfig"))
-	t.Setenv("HOME", tmp)
+	tmp := isolateInstall(t)
 	var out, errOut bytes.Buffer
 	if code := run([]string{"install", "--sound", "--yes"}, strings.NewReader(""), &out, &errOut); code != 0 {
 		t.Fatalf("install code=%d stderr=%s", code, errOut.String())
@@ -77,13 +75,8 @@ func TestInstallPrintsGlowNote(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not installed")
 	}
-	tmp := t.TempDir()
-	t.Setenv("PUSH_IT_CONFIG_DIR", filepath.Join(tmp, "cfg"))
-	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(tmp, "gitconfig"))
-	t.Setenv("HOME", tmp)
-	orig := glow.Install
+	isolateInstall(t)
 	glow.Install = func(*config.InstallState) (string, error) { return "log out and back in", nil }
-	t.Cleanup(func() { glow.Install = orig })
 	var out, errOut bytes.Buffer
 	if code := run([]string{"install", "--glow", "--yes"}, strings.NewReader(""), &out, &errOut); code != 0 {
 		t.Fatalf("code=%d stderr=%s", code, errOut.String())
@@ -93,14 +86,46 @@ func TestInstallPrintsGlowNote(t *testing.T) {
 	}
 }
 
+// TestInstallGlowErrorDisablesGlow covers I2: a failed glow.Install must not
+// leave glow.Enabled=true in the saved config, and must tell the user why.
+func TestInstallGlowErrorDisablesGlow(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	tmp := isolateInstall(t)
+	glow.Install = func(*config.InstallState) (string, error) { return "", errors.New("boom") }
+	var out, errOut bytes.Buffer
+	if code := run([]string{"install", "--glow", "--yes"}, strings.NewReader(""), &out, &errOut); code != 0 {
+		t.Fatalf("code=%d stderr=%s", code, errOut.String())
+	}
+	if !strings.Contains(errOut.String(), "glow disabled") {
+		t.Fatalf("stderr = %q, want it to mention glow disabled", errOut.String())
+	}
+	if !strings.Contains(out.String(), "glow=false") {
+		t.Fatalf("stdout = %q, want the enabled summary to show glow=false", out.String())
+	}
+	b, err := os.ReadFile(filepath.Join(tmp, "cfg", "config.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var saved struct {
+		Glow struct {
+			Enabled bool `json:"enabled"`
+		} `json:"glow"`
+	}
+	if err := json.Unmarshal(b, &saved); err != nil {
+		t.Fatal(err)
+	}
+	if saved.Glow.Enabled {
+		t.Fatalf("glow.enabled should be false after a failed glow.Install:\n%s", b)
+	}
+}
+
 func TestInstallInteractiveReadsAnswers(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not installed")
 	}
-	tmp := t.TempDir()
-	t.Setenv("PUSH_IT_CONFIG_DIR", filepath.Join(tmp, "cfg"))
-	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(tmp, "gitconfig"))
-	t.Setenv("HOME", tmp)
+	tmp := isolateInstall(t)
 	var out, errOut bytes.Buffer
 	// sound? n   hue? n   glow? n
 	if code := run([]string{"install"}, strings.NewReader("n\nn\nn\n"), &out, &errOut); code != 0 {
@@ -119,10 +144,7 @@ func TestInstallExplicitFlagsAreAdditive(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not installed")
 	}
-	tmp := t.TempDir()
-	t.Setenv("PUSH_IT_CONFIG_DIR", filepath.Join(tmp, "cfg"))
-	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(tmp, "gitconfig"))
-	t.Setenv("HOME", tmp)
+	tmp := isolateInstall(t)
 	var out, errOut bytes.Buffer
 	if code := run([]string{"install", "--all", "--yes"}, strings.NewReader(""), &out, &errOut); code != 0 {
 		t.Fatalf("install --all code=%d stderr=%s", code, errOut.String())
@@ -163,10 +185,7 @@ func TestInstallFlagsOnFreshConfigStartFromOff(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not installed")
 	}
-	tmp := t.TempDir()
-	t.Setenv("PUSH_IT_CONFIG_DIR", filepath.Join(tmp, "cfg"))
-	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(tmp, "gitconfig"))
-	t.Setenv("HOME", tmp)
+	tmp := isolateInstall(t)
 	var out, errOut bytes.Buffer
 	if code := run([]string{"install", "--sound", "--yes"}, strings.NewReader(""), &out, &errOut); code != 0 {
 		t.Fatalf("install --sound code=%d stderr=%s", code, errOut.String())
@@ -201,10 +220,7 @@ func TestInstallHueYesSkipsWhenUnconfigured(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not installed")
 	}
-	tmp := t.TempDir()
-	t.Setenv("PUSH_IT_CONFIG_DIR", filepath.Join(tmp, "cfg"))
-	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(tmp, "gitconfig"))
-	t.Setenv("HOME", tmp)
+	tmp := isolateInstall(t)
 	var out, errOut bytes.Buffer
 	if code := run([]string{"install", "--hue", "--yes"}, strings.NewReader(""), &out, &errOut); code != 0 {
 		t.Fatalf("install --hue --yes code=%d stderr=%s", code, errOut.String())
@@ -234,11 +250,8 @@ func TestInstallHueYesSkipsWhenUnconfigured(t *testing.T) {
 // that differs from the stored pin. It must refuse non-interactively,
 // leave the old pin on disk, and exit 1.
 func TestInstallHueYesRefusesChangedCert(t *testing.T) {
-	tmp := t.TempDir()
+	tmp := isolateInstall(t)
 	cfgDir := filepath.Join(tmp, "cfg")
-	t.Setenv("PUSH_IT_CONFIG_DIR", cfgDir)
-	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(tmp, "gitconfig"))
-	t.Setenv("HOME", tmp)
 
 	stalePin := strings.Repeat("0", 64)
 	if err := os.MkdirAll(cfgDir, 0o700); err != nil {
