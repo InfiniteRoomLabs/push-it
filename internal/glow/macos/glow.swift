@@ -138,7 +138,7 @@ final class App: NSObject, NSApplicationDelegate {
     init(duration: CFTimeInterval) { self.duration = duration }
 
     func applicationDidFinishLaunching(_ n: Notification) {
-        guard let screen = NSScreen.main else { NSApp.terminate(nil); return }
+        guard let screen = NSScreen.main ?? NSScreen.screens.first else { exit(0) }
         let frame = screen.frame
         let scale = screen.backingScaleFactor
         let w = GlowWindow(contentRect: frame, styleMask: .borderless, backing: .buffered, defer: false)
