@@ -35,3 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Linux glow backend: `push-it install --glow` extracts and enables the GNOME extension; the hook triggers it over D-Bus with the clip's exact duration; refuses clearly on non-GNOME sessions.
 - Windows glow backend: in-process click-through layered window rendered by the shared `paint` package (compiles and vets in CI; visual verification pending).
 - macOS glow backend: a Swift helper (universal binary, built in CI, embedded with `-tags glowhelper`) draws the frame with four axial gradient strips mirroring the reference renderer; `install --glow` extracts it next to the config.
+
+### Fixed
+
+- GNOME extension: the first frame of the glow animation now starts at its pulsed opacity instead of full opacity, matching every subsequent frame.

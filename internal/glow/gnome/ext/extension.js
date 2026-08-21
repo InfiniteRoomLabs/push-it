@@ -42,6 +42,7 @@ export default class PushItGlowExtension extends Extension {
         this._startUs = now;
         const m = Main.layoutManager.primaryMonitor;
         this._area = new St.DrawingArea({ reactive: false, x: m.x, y: m.y, width: m.width, height: m.height });
+        this._area.opacity = Math.round(255 * opacityAt(0));
         this._area.connect('repaint', a => this._paint(a));
         Main.layoutManager.addTopChrome(this._area, { affectsInputRegion: false, affectsStruts: false, trackFullscreen: false });
         this._timer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, FRAME_MS, () => {
