@@ -1,12 +1,15 @@
 // push-it glow helper for macOS.
 // Mirrors internal/glow/paint via the same formulas as
-// internal/glow/gnome/ext/glowmath.js (stripGradient/edgeStops/hueAt/
-// hsvToRgb/perimeterPos): frame 14 px, rotation 2 s, pulse 600 ms between
-// 0.55 and 1.0.
+// internal/glow/gnome/ext/glowmath.js (glowWidth/edgeAlpha/edgePos/
+// stripGradient/alphaStops/edgeStops/hueAt/hsvToRgb): a feathered glow,
+// 96 px wide at 1080p and scaled by the shorter screen side, that fades
+// inward with quadratic falloff so corners render as two overlapping
+// glows. Rotation 2 s, pulse 600 ms between 0.55 and 1.0.
 import AppKit
 import QuartzCore
 
-let frameThickness: CGFloat = 14
+let glowWidthAt1080: CGFloat = 96
+let falloffExponent: CGFloat = 2.0
 let rotationPeriodMs: CGFloat = 2000
 let pulsePeriod: CFTimeInterval = 0.6
 let minOpacity: Float = 0.55
@@ -31,17 +34,38 @@ func parseArgs() -> (duration: CFTimeInterval, dryRun: Bool) {
     return (duration, dryRun)
 }
 
-// Mirrors glowmath.js perimeterPos: a pixel is assigned to the first
-// matching band in this order: top (y < t), bottom (y >= h-t), right
-// (x >= w-t), left (x < t).
-func perimeterPos(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat) -> CGFloat {
+// One of the four screen edges the glow fades in from. Mirrors
+// glowmath.js's EDGE / paint.Edge.
+enum Edge {
+    case top, bottom, left, right
+}
+
+// Mirrors glowmath.js glowWidth: the glow's width in px for a w x h
+// screen, scaled by the shorter side.
+func glowWidth(_ w: CGFloat, _ h: CGFloat) -> CGFloat {
+    let m = min(w, h)
+    let n = (m * glowWidthAt1080 / 1080).rounded()
+    return n < 1 ? 1 : n
+}
+
+// Mirrors glowmath.js edgeAlpha: the glow's alpha contribution at
+// distance d from an edge, for a glow of the given width.
+func edgeAlpha(_ d: CGFloat, _ width: CGFloat) -> CGFloat {
+    if d < 0 || d >= width { return 0 }
+    return pow(1 - d / width, falloffExponent)
+}
+
+// Mirrors glowmath.js edgePos: the point (x, y) on the given edge mapped
+// to its position in [0,1) along the screen perimeter, clockwise from the
+// top-left corner. x, y, w, h are in y-down (Cairo-style) coordinates.
+func edgePos(_ edge: Edge, _ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat) -> CGFloat {
     let p = 2 * (w + h)
-    let t = frameThickness
-    if y < t { return x / p }
-    if y >= h - t { return (w + h + (w - 1 - x)) / p }
-    if x >= w - t { return (w + y) / p }
-    if x < t { return (2 * w + h + (h - 1 - y)) / p }
-    return x / p
+    switch edge {
+    case .top: return x / p
+    case .right: return (w + y) / p
+    case .bottom: return (w + h + (w - 1 - x)) / p
+    case .left: return (2 * w + h + (h - 1 - y)) / p
+    }
 }
 
 // Mirrors glowmath.js hueAt.
@@ -81,45 +105,78 @@ func edgeStops(_ startPos: CGFloat, _ endPos: CGFloat, _ elapsedMs: CGFloat, _ n
     return stops
 }
 
-// One frame strip: its screen-space fill rect (AppKit coordinates, y axis
-// up) and the perimeter-clockwise gradient line through it.
+// Mirrors glowmath.js alphaStops: 9 evenly spaced (offset, alpha) pairs
+// from the edge (offset 0, alpha 1) to the glow width (offset 1, alpha 0),
+// quadratic falloff. width is unused (the offsets are width-independent
+// fractions) but kept for signature parity with the JS/Go references.
+func alphaStops(_ width: CGFloat) -> [(CGFloat, CGFloat)] {
+    var stops: [(CGFloat, CGFloat)] = []
+    stops.reserveCapacity(9)
+    for k in 0...8 {
+        let off = CGFloat(k) / 8
+        stops.append((off, pow(1 - off, falloffExponent)))
+    }
+    return stops
+}
+
+// One full-length edge strip: its fill rect in y-down (Cairo-style)
+// coordinates, and the perimeter positions p0 < p1 at its clockwise
+// hue-gradient line's two ends.
 struct Strip {
+    let edge: Edge
     let frame: CGRect
-    let start: CGPoint
-    let end: CGPoint
     let p0: CGFloat
     let p1: CGFloat
 }
 
-// Mirrors glowmath.js stripGradient. glowmath's rects are in y-down (Cairo)
-// coordinates; AppKit's y axis points up, so each rect's y becomes
-// h - y_down - sh. p0/p1 keep glowmath's own per-band formulas (not
-// perimeterPos at the corner - see glowmath.js for why) so adjacent strips
-// stay color-continuous at the corners. Gradient direction per strip runs
-// clockwise-start -> clockwise-end: top left->right, right top->bottom,
-// bottom right->left, left bottom->top - expressed directly in each strip's
-// own unit space.
+// Mirrors glowmath.js stripGradient: the four full-length edge strips
+// (top, bottom, left, right), each spanning the full edge length rather
+// than stopping short at the corners, so adjacent strips overlap there.
+// p0/p1 use the OWNING edge's own edgePos formula at the first/last pixel
+// of that edge in clockwise order (see glowmath.js for why: a corner sits
+// on a precedence boundary between two edges).
 func stripGradient(_ w: CGFloat, _ h: CGFloat) -> [Strip] {
-    let p = 2 * (w + h)
-    let t = frameThickness
-    let top: (CGFloat) -> CGFloat = { x in x / p }
-    let right: (CGFloat) -> CGFloat = { y in (w + y) / p }
-    let bottom: (CGFloat) -> CGFloat = { x in (w + h + (w - 1 - x)) / p }
-    let left: (CGFloat) -> CGFloat = { y in (2 * w + h + (h - 1 - y)) / p }
+    let W = glowWidth(w, h)
     return [
-        Strip(frame: CGRect(x: 0, y: h - t, width: w, height: t),
-              start: CGPoint(x: 0, y: 0.5), end: CGPoint(x: 1, y: 0.5),
-              p0: top(0), p1: top(w)),
-        Strip(frame: CGRect(x: w - t, y: t, width: t, height: h - 2 * t),
-              start: CGPoint(x: 0.5, y: 1), end: CGPoint(x: 0.5, y: 0),
-              p0: right(0), p1: right(h)),
-        Strip(frame: CGRect(x: 0, y: 0, width: w, height: t),
-              start: CGPoint(x: 1, y: 0.5), end: CGPoint(x: 0, y: 0.5),
-              p0: bottom(w), p1: bottom(0)),
-        Strip(frame: CGRect(x: 0, y: t, width: t, height: h - 2 * t),
-              start: CGPoint(x: 0.5, y: 0), end: CGPoint(x: 0.5, y: 1),
-              p0: left(h), p1: left(0)),
+        Strip(edge: .top, frame: CGRect(x: 0, y: 0, width: w, height: W),
+              p0: edgePos(.top, 0, 0, w, h), p1: edgePos(.top, w - 1, 0, w, h)),
+        Strip(edge: .bottom, frame: CGRect(x: 0, y: h - W, width: w, height: W),
+              p0: edgePos(.bottom, w - 1, h - 1, w, h), p1: edgePos(.bottom, 0, h - 1, w, h)),
+        Strip(edge: .left, frame: CGRect(x: 0, y: 0, width: W, height: h),
+              p0: edgePos(.left, 0, h - 1, w, h), p1: edgePos(.left, 0, 0, w, h)),
+        Strip(edge: .right, frame: CGRect(x: w - W, y: 0, width: W, height: h),
+              p0: edgePos(.right, w - 1, 0, w, h), p1: edgePos(.right, w - 1, h - 1, w, h)),
     ]
+}
+
+// appKitFrame converts a y-down (Cairo-style) rect to AppKit's y-up
+// coordinate space for a screen of height h.
+func appKitFrame(_ r: CGRect, _ h: CGFloat) -> CGRect {
+    CGRect(x: r.minX, y: h - r.minY - r.height, width: r.width, height: r.height)
+}
+
+// hueDirection is the hue gradient's start/end unit points for an edge,
+// running clockwise along the edge (AppKit y-up unit coordinates, local
+// to the strip layer's own frame).
+func hueDirection(_ edge: Edge) -> (CGPoint, CGPoint) {
+    switch edge {
+    case .top: return (CGPoint(x: 0, y: 0.5), CGPoint(x: 1, y: 0.5))
+    case .right: return (CGPoint(x: 0.5, y: 1), CGPoint(x: 0.5, y: 0))
+    case .bottom: return (CGPoint(x: 1, y: 0.5), CGPoint(x: 0, y: 0.5))
+    case .left: return (CGPoint(x: 0.5, y: 0), CGPoint(x: 0.5, y: 1))
+    }
+}
+
+// maskDirection is the alpha mask gradient's start/end unit points for an
+// edge, running from the screen edge inward (AppKit y-up unit
+// coordinates, local to the strip layer's own frame).
+func maskDirection(_ edge: Edge) -> (CGPoint, CGPoint) {
+    switch edge {
+    case .top: return (CGPoint(x: 0.5, y: 1), CGPoint(x: 0.5, y: 0))
+    case .bottom: return (CGPoint(x: 0.5, y: 0), CGPoint(x: 0.5, y: 1))
+    case .left: return (CGPoint(x: 0, y: 0.5), CGPoint(x: 1, y: 0.5))
+    case .right: return (CGPoint(x: 1, y: 0.5), CGPoint(x: 0, y: 0.5))
+    }
 }
 
 final class GlowWindow: NSWindow {
@@ -132,7 +189,7 @@ final class App: NSObject, NSApplicationDelegate {
     var window: GlowWindow?
     var strips: [Strip] = []
     var stripLayers: [CAGradientLayer] = []
-    var locations: [NSNumber] = []
+    var hueLocations: [NSNumber] = []
     var timer: Timer?
     var start: CFTimeInterval = 0
     init(duration: CFTimeInterval) { self.duration = duration }
@@ -155,16 +212,34 @@ final class App: NSObject, NSApplicationDelegate {
         w.contentView?.wantsLayer = true
 
         strips = stripGradient(frame.width, frame.height)
-        locations = (0..<16).map { NSNumber(value: Double($0) / 15.0) }
+        hueLocations = (0..<16).map { NSNumber(value: Double($0) / 15.0) }
+        let W = glowWidth(frame.width, frame.height)
+        let aStops = alphaStops(W)
+        let maskLocations = aStops.map { NSNumber(value: Double($0.0)) }
+        let maskColors = aStops.map { NSColor.black.withAlphaComponent($0.1).cgColor }
+
         stripLayers = strips.map { strip -> CAGradientLayer in
             let g = CAGradientLayer()
             g.type = .axial
-            g.frame = strip.frame
-            g.startPoint = strip.start
-            g.endPoint = strip.end
-            g.locations = locations
+            g.frame = appKitFrame(strip.frame, frame.height)
+            let (start, end) = hueDirection(strip.edge)
+            g.startPoint = start
+            g.endPoint = end
+            g.locations = hueLocations
             g.contentsScale = scale
             g.colors = edgeStops(strip.p0, strip.p1, 0)
+
+            let mask = CAGradientLayer()
+            mask.type = .axial
+            mask.frame = g.bounds
+            let (maskStart, maskEnd) = maskDirection(strip.edge)
+            mask.startPoint = maskStart
+            mask.endPoint = maskEnd
+            mask.locations = maskLocations
+            mask.colors = maskColors
+            mask.contentsScale = scale
+            g.mask = mask
+
             root.addSublayer(g)
             return g
         }

@@ -36,7 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GNOME Shell extension `pushit-glow@infiniteroomlabs.com` (embedded in the binary): D-Bus `Start(seconds)`/`Stop`, click-through feathered glow on the primary monitor rendered as four feathered strips (axial hue gradient masked by an inward alpha falloff), declares `shell-version` support for GNOME 46-50; gjs unit tests for the shared math.
 - Linux glow backend: `push-it install --glow` extracts and enables the GNOME extension; the hook triggers it over D-Bus with the clip's exact duration; refuses clearly on non-GNOME sessions.
 - Windows glow backend: in-process click-through layered window rendered by the shared `paint` package (compiles and vets in CI; visual verification pending).
-- macOS glow backend: a Swift helper (universal binary, built in CI, embedded with `-tags glowhelper`) draws the frame with four axial gradient strips mirroring the reference renderer; `install --glow` extracts it next to the config.
+- macOS glow backend: a Swift helper (universal binary, built in CI, embedded with `-tags glowhelper`) draws four feathered strips (axial hue gradient masked by an inward alpha falloff) mirroring the reference renderer; `install --glow` extracts it next to the config.
 
 ### Fixed
 
