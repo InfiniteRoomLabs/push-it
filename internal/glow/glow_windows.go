@@ -99,7 +99,7 @@ func renderLoop(ctx context.Context, d time.Duration) error {
 	old, _, _ := pSelectObject.Call(memDC, bmp)
 	defer pSelectObject.Call(memDC, old)
 
-	// Zero once; RenderBand then rewrites only the frame band each frame and
+	// Zero once; RenderGlow then rewrites only the edge glow each frame and
 	// leaves the (permanently transparent) interior alone.
 	buf := unsafe.Slice((*byte)(bits), w*h*4)
 	clear(buf)
@@ -123,7 +123,7 @@ func renderLoop(ctx context.Context, d time.Duration) error {
 			pTranslateMessage.Call(uintptr(unsafe.Pointer(&m)))
 			pDispatchMessageW.Call(uintptr(unsafe.Pointer(&m)))
 		}
-		paint.RenderBand(buf, w, h, time.Since(start))
+		paint.RenderGlow(buf, w, h, time.Since(start))
 		if r, _, e := pUpdateLayeredWindow.Call(hwnd, screenDC, 0, uintptr(unsafe.Pointer(&sz)), memDC,
 			uintptr(unsafe.Pointer(&src)), 0, uintptr(unsafe.Pointer(&blend)), ulwAlpha); r == 0 {
 			return fmt.Errorf("glow: UpdateLayeredWindow: %v", e)

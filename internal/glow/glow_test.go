@@ -20,7 +20,7 @@ func TestStubBackendIsNoop(t *testing.T) {
 }
 
 func TestParamsAreSane(t *testing.T) {
-	if FrameThickness <= 0 || MinOpacity >= MaxOpacity || MaxOpacity > 1 {
+	if GlowWidthAt1080 <= 0 || FalloffExponent < 1 || MinOpacity >= MaxOpacity || MaxOpacity > 1 {
 		t.Fatal("bad params")
 	}
 }

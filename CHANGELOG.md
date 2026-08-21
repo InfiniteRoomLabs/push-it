@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Glow is now a feathered 96 px (at 1080p) inward-fading rainbow with overlapping corners instead of a hard 14 px frame; reference renderer, Windows backend, spec, and docs updated.
 - Repository published: public GitHub (`InfiniteRoomLabs/push-it`) with a private mirror; CI runs lint, a no-cgo cross-compile matrix, and tests on Linux, macOS, and Windows on every push.
 - The glow animation parameters (`FrameThickness`, `RotationPeriod`, `PulsePeriod`, `MinOpacity`, `MaxOpacity`) now live in `internal/glow/paint` and are re-exported by `internal/glow` under the same names, so an in-process backend inside package `glow` can call the renderer without an import cycle.
 - docs: glow is shipped on GNOME, macOS (release binaries), and Windows (visual verification pending).

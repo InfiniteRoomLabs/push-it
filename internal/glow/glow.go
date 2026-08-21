@@ -1,4 +1,5 @@
-// Package glow draws an animated rainbow frame around the screen.
+// Package glow draws a rainbow glow that fades inward from every screen
+// edge and travels counter-clockwise.
 //
 // The rendering is platform-specific and lives in build-tagged files that
 // overwrite Run/Install/Uninstall in init(). The animation parameters live
@@ -17,7 +18,8 @@ import (
 // so that platform backends in this package can use the renderer) and
 // re-exported here under the same names.
 const (
-	FrameThickness  = paint.FrameThickness
+	GlowWidthAt1080 = paint.GlowWidthAt1080
+	FalloffExponent = paint.FalloffExponent
 	RotationPeriod  = paint.RotationPeriod
 	PulsePeriod     = paint.PulsePeriod
 	MinOpacity      = paint.MinOpacity

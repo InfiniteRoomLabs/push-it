@@ -1,6 +1,6 @@
 # Screen glow
 
-An animated rainbow frame around the screen edge, shown for exactly as long as the clip plays (the clip is decoded before playback, so its length is known up front). It never captures input.
+An animated rainbow glow that fades inward from the screen edge, shown for exactly as long as the clip plays (the clip is decoded before playback, so its length is known up front). It never captures input.
 
 All three renderers mirror `internal/glow/paint` (the reference renderer): the GNOME extension and the macOS helper each port `glowmath.js`'s math (perimeter position, hue rotation, opacity pulse) to their own runtime, and the Windows backend calls the `paint` package directly.
 
@@ -17,7 +17,7 @@ All three renderers mirror `internal/glow/paint` (the reference renderer): the G
 
 ## Parameters
 
-Frame thickness 14 px, one full rainbow rotation every 2 s, opacity pulsing between 0.55 and 1.0 every 0.6 s. The constants are defined once in `internal/glow/paint/paint.go` and re-exported under the same names by `internal/glow/glow.go`; every renderer (GNOME, macOS, Windows) is mirrored from that single source.
+Glow width 96 px at 1080p, scaled by the shorter screen side, fading inward with a quadratic falloff; corners are rendered as two overlapping glows. One full rainbow rotation every 2 s, opacity pulsing between 0.55 and 1.0 every 0.6 s. The constants are defined once in `internal/glow/paint/paint.go` and re-exported under the same names by `internal/glow/glow.go`; every renderer (GNOME, macOS, Windows) is mirrored from that single source.
 
 ## How it is triggered
 

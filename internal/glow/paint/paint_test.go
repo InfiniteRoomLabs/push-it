@@ -7,109 +7,141 @@ import (
 	"time"
 )
 
-func TestPerimeterPosWalksClockwise(t *testing.T) {
-	w, h := 200, 100
-	top := PerimeterPos(50, 0, w, h)
-	right := PerimeterPos(w-1, 50, w, h)
-	bottom := PerimeterPos(150, h-1, w, h)
-	left := PerimeterPos(0, 50, w, h)
-	if !(top < right && right < bottom && bottom < left && left < 1) {
-		t.Fatalf("positions not clockwise: %v %v %v %v", top, right, bottom, left)
-	}
-	if PerimeterPos(0, 0, w, h) != 0 {
-		t.Fatal("top-left corner must be position 0")
-	}
-}
-
-func TestInFrame(t *testing.T) {
-	w, h := 200, 100
-	for _, p := range []struct{ x, y int }{
-		{0, 0}, {w - 1, 0}, {0, h - 1}, {w - 1, h - 1}, // corners
-		{50, 0}, {50, h - 1}, {0, 50}, {w - 1, 50}, // edge midpoints
-	} {
-		if !InFrame(p.x, p.y, w, h) {
-			t.Fatalf("InFrame(%d, %d, %d, %d) = false, want true", p.x, p.y, w, h)
-		}
-	}
-	if InFrame(w/2, h/2, w, h) {
-		t.Fatal("InFrame at centre must be false")
-	}
-	if InFrame(FrameThickness, FrameThickness, w, h) {
-		t.Fatal("InFrame at (t, t) must be false")
-	}
-}
-
-func TestPerimeterPosInteriorMatchesTopBand(t *testing.T) {
-	w, h := 200, 100
-	x, y := w/2, h/2
-	if InFrame(x, y, w, h) {
-		t.Fatalf("(%d, %d) must be an interior pixel for this test", x, y)
-	}
-	got := PerimeterPos(x, y, w, h)
-	want := float64(x) / float64(2*(w+h))
-	if got != want {
-		t.Fatalf("interior PerimeterPos = %v, want top-band value %v", got, want)
-	}
-}
-
-func TestHueAtRotatesOncePerPeriod(t *testing.T) {
-	if HueAt(0, 0) != 0 {
-		t.Fatal("hue at origin, t=0 must be 0")
-	}
-	half := HueAt(0, RotationPeriod/2)
-	if math.Abs(half-0.5) > 1e-9 {
-		t.Fatalf("half period should advance hue by 0.5, got %v", half)
-	}
-	full := HueAt(0.25, RotationPeriod)
-	if math.Abs(full-0.25) > 1e-9 {
-		t.Fatalf("full period must wrap to the same hue, got %v", full)
-	}
-}
-
-func TestOpacityAtStaysInBounds(t *testing.T) {
-	if o := OpacityAt(0); math.Abs(o-(MinOpacity+MaxOpacity)/2) > 1e-9 {
-		t.Fatalf("t=0 should be the midpoint, got %v", o)
-	}
-	if o := OpacityAt(PulsePeriod / 4); math.Abs(o-MaxOpacity) > 1e-9 {
-		t.Fatalf("quarter period should be max, got %v", o)
-	}
-	for ms := 0; ms < 2000; ms += 7 {
-		o := OpacityAt(time.Duration(ms) * time.Millisecond)
-		if o < MinOpacity-1e-9 || o > MaxOpacity+1e-9 {
-			t.Fatalf("opacity out of bounds at %dms: %v", ms, o)
-		}
-	}
-}
-
-func TestHSVToRGBPrimaries(t *testing.T) {
+func TestGlowWidthScales(t *testing.T) {
 	cases := []struct {
-		h       float64
-		r, g, b uint8
-	}{{0, 255, 0, 0}, {1.0 / 3, 0, 255, 0}, {2.0 / 3, 0, 0, 255}}
+		w, h, want int
+	}{
+		{1920, 1080, 96},
+		{2560, 1440, 128},
+		{3840, 2160, 192},
+		{800, 600, 53},
+		{10, 10, 1},
+	}
 	for _, c := range cases {
-		r, g, b := HSVToRGB(c.h)
-		if r != c.r || g != c.g || b != c.b {
-			t.Fatalf("hue %v -> %d %d %d", c.h, r, g, b)
+		if got := GlowWidth(c.w, c.h); got != c.want {
+			t.Fatalf("GlowWidth(%d, %d) = %d, want %d", c.w, c.h, got, c.want)
 		}
 	}
 }
 
-func TestRenderFrameOnly(t *testing.T) {
-	w, h := 64, 48
+func TestEdgeAlphaFalloff(t *testing.T) {
+	if a := EdgeAlpha(0, 96); a != 1 {
+		t.Fatalf("EdgeAlpha(0, 96) = %v, want 1", a)
+	}
+	if a := EdgeAlpha(48, 96); math.Abs(a-0.25) > 1e-9 {
+		t.Fatalf("EdgeAlpha(48, 96) = %v, want 0.25", a)
+	}
+	if a := EdgeAlpha(96, 96); a != 0 {
+		t.Fatalf("EdgeAlpha(96, 96) = %v, want 0", a)
+	}
+	if a := EdgeAlpha(200, 96); a != 0 {
+		t.Fatalf("EdgeAlpha(200, 96) = %v, want 0", a)
+	}
+	prev := EdgeAlpha(0, 96)
+	for d := 1.0; d <= 96; d++ {
+		cur := EdgeAlpha(d, 96)
+		if cur > prev {
+			t.Fatalf("EdgeAlpha not monotone non-increasing at d=%v: %v > %v", d, cur, prev)
+		}
+		prev = cur
+	}
+}
+
+func TestEdgePosClockwise(t *testing.T) {
+	w, h := 200, 100
+	if p := EdgePos(Top, 0, 0, w, h); p != 0 {
+		t.Fatalf("EdgePos(Top, 0, 0) = %v, want 0", p)
+	}
+	top := EdgePos(Top, 199, 0, w, h)
+	right := EdgePos(Right, 199, 0, w, h)
+	if !(top < right) {
+		t.Fatalf("top(%v) must be < right(%v)", top, right)
+	}
+	right2 := EdgePos(Right, 199, 99, w, h)
+	bottom := EdgePos(Bottom, 199, 99, w, h)
+	if !(right2 < bottom) {
+		t.Fatalf("right(%v) must be < bottom(%v)", right2, bottom)
+	}
+	bottom2 := EdgePos(Bottom, 0, 99, w, h)
+	left := EdgePos(Left, 0, 99, w, h)
+	if !(bottom2 < left) {
+		t.Fatalf("bottom(%v) must be < left(%v)", bottom2, left)
+	}
+	if p := EdgePos(Left, 0, 0, w, h); !(p < 1) {
+		t.Fatalf("EdgePos(Left, 0, 0) = %v, want < 1", p)
+	}
+}
+
+func TestRenderCompositesOverlappingStrips(t *testing.T) {
+	w, h := 200, 100
+	width := 9 // round(100*96/1080)
+	if GlowWidth(w, h) != width {
+		t.Fatalf("test assumption broken: GlowWidth(%d,%d) = %d, want %d", w, h, GlowWidth(w, h), width)
+	}
 	buf := make([]byte, w*h*4)
 	Render(buf, w, h, 0)
 	alpha := func(x, y int) byte { return buf[(y*w+x)*4+3] }
-	if alpha(0, 0) == 0 || alpha(w-1, h-1) == 0 || alpha(w/2, 0) == 0 || alpha(0, h/2) == 0 {
-		t.Fatal("frame pixels must be opaque-ish")
+
+	want := uint8(math.Round(255 * OpacityAt(0)))
+	if a := alpha(100, 0); a != want {
+		t.Fatalf("alpha(100,0) = %d, want %d", a, want)
 	}
-	if alpha(w/2, h/2) != 0 || alpha(FrameThickness, FrameThickness) != 0 {
-		t.Fatal("interior must be transparent")
+	if a := alpha(0, 50); a != want {
+		t.Fatalf("alpha(0,50) = %d, want %d", a, want)
 	}
-	// premultiplied: no channel may exceed alpha
+	// (0,0) is on both the top and left edges (d=0 for each, EdgeAlpha=1),
+	// so per Global Constraints ("alpha = 1-(1-aH)(1-aV)", pulse multiplies
+	// each strip's alpha before composing) it composites to more than a
+	// single strip's alpha, not to OpacityAt(0) alone.
+	aCorner := OpacityAt(0) * EdgeAlpha(0, width)
+	wantCorner0 := uint8(math.Round(255 * (1 - (1-aCorner)*(1-aCorner))))
+	if a := alpha(0, 0); a != wantCorner0 {
+		t.Fatalf("alpha(0,0) (corner) = %d, want %d", a, wantCorner0)
+	}
+
+	wantEdge := uint8(math.Round(255 * OpacityAt(0) * EdgeAlpha(4, width)))
+	if a := alpha(4, 50); absDiff(a, wantEdge) > 1 {
+		t.Fatalf("alpha(4,50) = %d, want ~%d", a, wantEdge)
+	}
+
+	aH := OpacityAt(0) * EdgeAlpha(4, width)
+	aV := aH
+	wantCorner := uint8(math.Round(255 * (1 - (1-aH)*(1-aV))))
+	if a := alpha(4, 4); absDiff(a, wantCorner) > 1 {
+		t.Fatalf("alpha(4,4) = %d, want ~%d", a, wantCorner)
+	}
+
+	if a := alpha(100, 50); a != 0 {
+		t.Fatalf("alpha(100,50) (interior) = %d, want 0", a)
+	}
+
 	for i := 0; i < len(buf); i += 4 {
 		a := buf[i+3]
 		if buf[i] > a || buf[i+1] > a || buf[i+2] > a {
 			t.Fatalf("pixel %d not premultiplied: %v", i/4, buf[i:i+4])
+		}
+	}
+}
+
+func absDiff(a, b uint8) int {
+	if a > b {
+		return int(a - b)
+	}
+	return int(b - a)
+}
+
+func TestRenderGlowEqualsRender(t *testing.T) {
+	sizes := []struct{ w, h int }{{200, 100}, {101, 37}}
+	elapsed := []time.Duration{0, RotationPeriod / 3}
+	for _, s := range sizes {
+		for _, e := range elapsed {
+			want := make([]byte, s.w*s.h*4)
+			Render(want, s.w, s.h, e)
+			got := make([]byte, s.w*s.h*4)
+			RenderGlow(got, s.w, s.h, e)
+			if !bytes.Equal(got, want) {
+				t.Fatalf("RenderGlow != Render for %dx%d at %v", s.w, s.h, e)
+			}
 		}
 	}
 }
@@ -141,18 +173,44 @@ func TestRenderRejectsShortBuffer(t *testing.T) {
 	Render(make([]byte, 10), 64, 48, 0)
 }
 
-func TestRenderBandMatchesRender(t *testing.T) {
-	sizes := []struct{ w, h int }{{64, 48}, {101, 37}, {20, 20}}
-	elapsed := []time.Duration{0, 137 * time.Millisecond}
-	for _, s := range sizes {
-		for _, e := range elapsed {
-			want := make([]byte, s.w*s.h*4)
-			Render(want, s.w, s.h, e)
-			got := make([]byte, s.w*s.h*4)
-			RenderBand(got, s.w, s.h, e)
-			if !bytes.Equal(got, want) {
-				t.Fatalf("RenderBand != Render for %dx%d at %v", s.w, s.h, e)
-			}
+func TestHSVToRGBPrimaries(t *testing.T) {
+	cases := []struct {
+		h       float64
+		r, g, b uint8
+	}{{0, 255, 0, 0}, {1.0 / 3, 0, 255, 0}, {2.0 / 3, 0, 0, 255}}
+	for _, c := range cases {
+		r, g, b := HSVToRGB(c.h)
+		if r != c.r || g != c.g || b != c.b {
+			t.Fatalf("hue %v -> %d %d %d", c.h, r, g, b)
+		}
+	}
+}
+
+func TestHueAtRotatesOncePerPeriod(t *testing.T) {
+	if HueAt(0, 0) != 0 {
+		t.Fatal("hue at origin, t=0 must be 0")
+	}
+	half := HueAt(0, RotationPeriod/2)
+	if math.Abs(half-0.5) > 1e-9 {
+		t.Fatalf("half period should advance hue by 0.5, got %v", half)
+	}
+	full := HueAt(0.25, RotationPeriod)
+	if math.Abs(full-0.25) > 1e-9 {
+		t.Fatalf("full period must wrap to the same hue, got %v", full)
+	}
+}
+
+func TestOpacityAtStaysInBounds(t *testing.T) {
+	if o := OpacityAt(0); math.Abs(o-(MinOpacity+MaxOpacity)/2) > 1e-9 {
+		t.Fatalf("t=0 should be the midpoint, got %v", o)
+	}
+	if o := OpacityAt(PulsePeriod / 4); math.Abs(o-MaxOpacity) > 1e-9 {
+		t.Fatalf("quarter period should be max, got %v", o)
+	}
+	for ms := 0; ms < 2000; ms += 7 {
+		o := OpacityAt(time.Duration(ms) * time.Millisecond)
+		if o < MinOpacity-1e-9 || o > MaxOpacity+1e-9 {
+			t.Fatalf("opacity out of bounds at %dms: %v", ms, o)
 		}
 	}
 }

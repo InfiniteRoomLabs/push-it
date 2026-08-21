@@ -1,7 +1,8 @@
-// Package paint is the reference renderer for the glow frame: a rainbow
-// that travels counter-clockwise around the screen edge while its opacity pulses.
+// Package paint is the reference renderer for the glow: a rainbow that
+// fades inward from every screen edge while it travels counter-clockwise
+// and its opacity pulses.
 // The Windows backend uses it directly; the GNOME (JS) and macOS (Swift)
-// renderers mirror HueAt/OpacityAt/PerimeterPos exactly.
+// renderers mirror HueAt/OpacityAt/EdgePos/EdgeAlpha exactly.
 package paint
 
 import (
@@ -15,43 +16,61 @@ import (
 // package, so the Windows backend inside package glow can call this
 // renderer without an import cycle.
 const (
-	FrameThickness = 14                     // px
-	RotationPeriod = 2 * time.Second        // one full trip of the rainbow around the frame
-	PulsePeriod    = 600 * time.Millisecond // opacity pulse
-	MinOpacity     = 0.55
-	MaxOpacity     = 1.0
+	GlowWidthAt1080 = 96                     // px, at a 1080-logical-pixel shorter screen side
+	FalloffExponent = 2.0                    // quadratic inward falloff
+	RotationPeriod  = 2 * time.Second        // one full trip of the rainbow around the perimeter
+	PulsePeriod     = 600 * time.Millisecond // opacity pulse
+	MinOpacity      = 0.55
+	MaxOpacity      = 1.0
 )
 
-// InFrame reports whether the pixel at (x, y) lies within the frame band of
-// thickness FrameThickness around a w x h screen.
-func InFrame(x, y, w, h int) bool {
-	t := FrameThickness
-	return x < t || x >= w-t || y < t || y >= h-t
+// Edge names one of the four screen edges the glow fades in from.
+type Edge int
+
+const (
+	Top Edge = iota
+	Bottom
+	Left
+	Right
+)
+
+// GlowWidth is the glow's width in px for a w x h screen, scaled by the
+// shorter side so the glow reads consistently across resolutions.
+func GlowWidth(w, h int) int {
+	m := w
+	if h < m {
+		m = h
+	}
+	n := int(math.Round(float64(m) * GlowWidthAt1080 / 1080))
+	if n < 1 {
+		return 1
+	}
+	return n
 }
 
-// PerimeterPos maps a pixel to its position in [0,1) along the screen
-// perimeter, clockwise from the top-left corner. A pixel is assigned to the
-// first matching band in this order: top (y < t), bottom (y >= h-t), right
-// (x >= w-t), left (x < t). All four corner squares therefore belong to the
-// top or bottom band. Renderers that mirror this function must use the same
-// order.
-func PerimeterPos(x, y, w, h int) float64 {
+// EdgeAlpha is the glow's alpha contribution at distance d from an edge,
+// for a glow of the given width: 1 at the edge, falling to 0 at width.
+func EdgeAlpha(d float64, width int) float64 {
+	if d < 0 || d >= float64(width) {
+		return 0
+	}
+	return math.Pow(1-d/float64(width), FalloffExponent)
+}
+
+// EdgePos maps the point (x, y) on the given edge to its position in [0,1)
+// along the screen perimeter, clockwise from the top-left corner. Renderers
+// that mirror this function must use the same per-edge formula.
+func EdgePos(e Edge, x, y, w, h int) float64 {
 	p := float64(2 * (w + h))
-	t := FrameThickness
-	switch {
-	case y < t:
+	switch e {
+	case Top:
 		return float64(x) / p
-	case y >= h-t:
-		return float64(w+h+(w-1-x)) / p
-	case x >= w-t:
+	case Right:
 		return float64(w+y) / p
-	case x < t:
+	case Bottom:
+		return float64(w+h+(w-1-x)) / p
+	default: // Left
 		return float64(2*w+h+(h-1-y)) / p
-	default:
-		// interior pixel: not part of the frame; callers check InFrame
-		// first. Returning the top-band value keeps the result
-		// deterministic and in [0,1).
-		return float64(x) / p
 	}
 }
 
@@ -90,60 +109,74 @@ func HSVToRGB(h float64) (r, g, b uint8) {
 	}
 }
 
+// over composites one edge strip's contribution source-over into buf at
+// pixel byte offset i. a is the strip alpha (pulse already applied), r/g/b
+// its colour.
+func over(buf []byte, i int, r, g, b uint8, a float64) {
+	if a <= 0 {
+		return
+	}
+	inv := 1 - a
+	buf[i] = uint8(math.Round(float64(b)*a + float64(buf[i])*inv))
+	buf[i+1] = uint8(math.Round(float64(g)*a + float64(buf[i+1])*inv))
+	buf[i+2] = uint8(math.Round(float64(r)*a + float64(buf[i+2])*inv))
+	buf[i+3] = uint8(math.Round(255*a + float64(buf[i+3])*inv))
+}
+
+// renderPixel composes top, bottom, left, right onto a zeroed pixel (x, y).
+func renderPixel(buf []byte, x, y, w, h, width int, pulse float64, elapsed time.Duration) {
+	i := (y*w + x) * 4
+	buf[i], buf[i+1], buf[i+2], buf[i+3] = 0, 0, 0, 0
+	type contrib struct {
+		e Edge
+		d float64
+	}
+	cs := [4]contrib{{Top, float64(y)}, {Bottom, float64(h - 1 - y)}, {Left, float64(x)}, {Right, float64(w - 1 - x)}}
+	for _, c := range cs {
+		a := pulse * EdgeAlpha(c.d, width)
+		if a <= 0 {
+			continue
+		}
+		r, g, b := HSVToRGB(HueAt(EdgePos(c.e, x, y, w, h), elapsed))
+		over(buf, i, r, g, b, a)
+	}
+}
+
 // Render fills buf (premultiplied BGRA, row-major, w*h*4 bytes) with the
-// frame at the given elapsed time. The interior is left fully transparent.
-// A buffer that is too small is left untouched.
+// glow at the given elapsed time. Pixels farther than GlowWidth from every
+// edge are fully transparent. A buffer that is too small is left untouched.
 func Render(buf []byte, w, h int, elapsed time.Duration) {
 	if len(buf) < w*h*4 {
 		return
 	}
-	alpha := OpacityAt(elapsed)
-	a8 := uint8(math.Round(255 * alpha))
+	width := GlowWidth(w, h)
+	pulse := OpacityAt(elapsed)
 	for y := 0; y < h; y++ {
 		for x := 0; x < w; x++ {
-			i := (y*w + x) * 4
-			if !InFrame(x, y, w, h) {
-				buf[i], buf[i+1], buf[i+2], buf[i+3] = 0, 0, 0, 0
-				continue
-			}
-			setPixel(buf, i, x, y, w, h, elapsed, alpha, a8)
+			renderPixel(buf, x, y, w, h, width, pulse, elapsed)
 		}
 	}
 }
 
-// RenderBand writes only the frame band - the four strips of thickness
-// FrameThickness - and never touches the interior. For any buffer the
-// caller zeroed once before the first call, the result is byte-for-byte
-// identical to Render, at a fraction of the per-frame cost (the interior of
-// the frame stays transparent for the whole animation). A buffer that is too
-// small is left untouched.
-func RenderBand(buf []byte, w, h int, elapsed time.Duration) {
+// RenderGlow writes only the pixels within GlowWidth of an edge. The caller
+// zeroes buf once before the first call; interior pixels are never touched.
+// For any buffer zeroed once before the first call, the result is
+// byte-for-byte identical to Render, at a fraction of the per-frame cost.
+// A buffer that is too small is left untouched.
+func RenderGlow(buf []byte, w, h int, elapsed time.Duration) {
 	if len(buf) < w*h*4 {
 		return
 	}
-	t := FrameThickness
-	alpha := OpacityAt(elapsed)
-	a8 := uint8(math.Round(255 * alpha))
-	span := func(y, x0, x1 int) {
-		for x := x0; x < x1; x++ {
-			setPixel(buf, (y*w+x)*4, x, y, w, h, elapsed, alpha, a8)
-		}
-	}
+	width := GlowWidth(w, h)
+	pulse := OpacityAt(elapsed)
 	for y := 0; y < h; y++ {
-		if y < t || y >= h-t { // full-width top and bottom strips
-			span(y, 0, w)
-			continue
+		edgeRow := y < width || y >= h-width
+		for x := 0; x < w; x++ {
+			if !edgeRow && x >= width && x < w-width {
+				x = w - width - 1 // skip the interior run
+				continue
+			}
+			renderPixel(buf, x, y, w, h, width, pulse, elapsed)
 		}
-		span(y, 0, min(t, w))   // left strip
-		span(y, max(t, w-t), w) // right strip
 	}
-}
-
-// setPixel writes one premultiplied BGRA frame pixel at byte offset i.
-func setPixel(buf []byte, i, x, y, w, h int, elapsed time.Duration, alpha float64, a8 uint8) {
-	r, g, b := HSVToRGB(HueAt(PerimeterPos(x, y, w, h), elapsed))
-	buf[i] = uint8(math.Round(float64(b) * alpha))
-	buf[i+1] = uint8(math.Round(float64(g) * alpha))
-	buf[i+2] = uint8(math.Round(float64(r) * alpha))
-	buf[i+3] = a8
 }
