@@ -187,6 +187,66 @@ func TestHSVToRGBPrimaries(t *testing.T) {
 	}
 }
 
+// renderPixelReference is the pre-optimization per-pixel renderer: it
+// recomputes EdgeAlpha and HSVToRGB(HueAt(EdgePos(...))) from scratch for
+// every pixel instead of using frame's precomputed tables. Kept only so
+// TestRenderMatchesReferenceImplementation can pin Render's table-based fast
+// path against it byte-for-byte.
+func renderPixelReference(buf []byte, x, y, w, h, width int, pulse float64, elapsed time.Duration) {
+	i := (y*w + x) * 4
+	buf[i], buf[i+1], buf[i+2], buf[i+3] = 0, 0, 0, 0
+	type contrib struct {
+		e Edge
+		d float64
+	}
+	cs := [4]contrib{{Top, float64(y)}, {Bottom, float64(h - 1 - y)}, {Left, float64(x)}, {Right, float64(w - 1 - x)}}
+	for _, c := range cs {
+		a := EdgeAlpha(c.d, width)
+		if a <= 0 {
+			continue
+		}
+		r, g, b := HSVToRGB(HueAt(EdgePos(c.e, x, y, w, h), elapsed))
+		over(buf, i, r, g, b, a)
+	}
+	for k := 0; k < 4; k++ {
+		buf[i+k] = uint8(math.Round(float64(buf[i+k]) * pulse))
+	}
+}
+
+func TestRenderMatchesReferenceImplementation(t *testing.T) {
+	sizes := []struct{ w, h int }{{200, 100}, {101, 37}, {1, 7}, {7, 1}}
+	elapsed := []time.Duration{0, RotationPeriod / 3}
+	for _, s := range sizes {
+		width := GlowWidth(s.w, s.h)
+		for _, e := range elapsed {
+			pulse := OpacityAt(e)
+
+			want := make([]byte, s.w*s.h*4)
+			for y := 0; y < s.h; y++ {
+				for x := 0; x < s.w; x++ {
+					renderPixelReference(want, x, y, s.w, s.h, width, pulse, e)
+				}
+			}
+
+			got := make([]byte, s.w*s.h*4)
+			Render(got, s.w, s.h, e)
+
+			if !bytes.Equal(got, want) {
+				t.Fatalf("Render != reference for %dx%d at %v", s.w, s.h, e)
+			}
+		}
+	}
+}
+
+func BenchmarkRenderGlow1080p(b *testing.B) {
+	w, h := 1920, 1080
+	buf := make([]byte, w*h*4)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		RenderGlow(buf, w, h, time.Duration(i)*time.Millisecond)
+	}
+}
+
 func TestHueAtRotatesOncePerPeriod(t *testing.T) {
 	if HueAt(0, 0) != 0 {
 		t.Fatal("hue at origin, t=0 must be 0")

@@ -208,6 +208,8 @@ final class App: NSObject, NSApplicationDelegate {
         let root = CALayer()
         root.frame = CGRect(origin: .zero, size: frame.size)
         root.contentsScale = scale
+        // the opacity pulse must scale the composed strips, not each strip
+        root.allowsGroupOpacity = true
         w.contentView?.layer = root
         w.contentView?.wantsLayer = true
 

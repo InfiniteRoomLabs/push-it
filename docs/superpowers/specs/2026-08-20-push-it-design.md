@@ -5,7 +5,7 @@ Status: approved for planning
 
 ## Purpose
 
-`push-it` is a `git pre-push` celebration. When you push, it plays a short "push it" sound clip, runs a rainbow burst on a Philips Hue light, and flashes an animated rainbow frame around the edge of your screen for exactly as long as the clip plays. Each of the three effects is an independent, optional component.
+`push-it` is a `git pre-push` celebration. When you push, it plays a short "push it" sound clip, runs a rainbow burst on a Philips Hue light, and flashes an animated rainbow glow around the edge of your screen for exactly as long as the clip plays. Each of the three effects is an independent, optional component.
 
 It replaces the current ad-hoc setup (a bash hook with an inline Python heredoc, a separate Hue script, and a clips directory with a JSON manifest) with one cross-platform Go binary, a proper installer/uninstaller, tests, CI, semver releases, and documentation  -  including how to cut your own clips from a track you own.
 
@@ -110,7 +110,7 @@ Port of the existing script: save `on/bri/hue/sat`, set full saturation/brightne
 
 ### Glow
 
-Contract: `glow.Run(ctx, duration time.Duration) error`. The backend is chosen at compile time by build tags. Shared visual parameters are constants in `internal/glow/params.go` (glow width 96 px at 1080p scaled by the shorter screen side, quadratic inward falloff, corners as overlapping glows, full hue rotation every 2 s, opacity pulse period 0.6 s between 0.55 and 1.0) and are mirrored verbatim in the JS and Swift renderers with a comment pointing back.
+Contract: `glow.Run(ctx, duration time.Duration) error`. The backend is chosen at compile time by build tags. Shared visual parameters are constants in `internal/glow/paint/paint.go` (re-exported by `internal/glow/glow.go`) (glow width 96 px at 1080p scaled by the shorter screen side, quadratic inward falloff, corners as overlapping glows, full hue rotation every 2 s, opacity pulse period 0.6 s between 0.55 and 1.0) and are mirrored verbatim in the JS and Swift renderers with a comment pointing back.
 
 - **Linux / GNOME**  -  a Shell extension exposing D-Bus `com.infiniteroomlabs.PushItGlow.Start(d: double)` on the session bus at `/com/infiniteroomlabs/PushItGlow`. `Start` adds a non-reactive `St.DrawingArea` to `Main.layoutManager.uiGroup` covering the primary monitor, repaints the frame at ~30 fps via a GLib timeout  -  four edge strips, each a Cairo linear gradient whose hue phase advances per frame so the rainbow appears to travel around the perimeter (Cairo has no conic gradients), and removes itself after `d` seconds. The Go backend calls `gdbus call --session ...` via `os/exec`. If `gdbus` is missing or the call fails (extension not installed/enabled, not GNOME), it returns nil after logging at debug level  -  glow is best-effort.
 - **macOS**  -  `glow/macos/glow.swift`: a borderless `NSWindow` at `.screenSaver` level, `ignoresMouseEvents = true`, `collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]`, clear background, one `CAGradientLayer` (`type = .conic`) masked to a frame path, with `CABasicAnimation`s for rotation and opacity pulse. Takes `--duration` and exits on its own. CI builds it with `swiftc` for `arm64-apple-macos` and `x86_64-apple-macos` and merges with `lipo`; the universal binary is passed to the release build as a CI artifact and embedded with `//go:build darwin` + `go:embed`. At runtime the Go backend extracts it to the data dir if missing or if its embedded hash changed, then `exec`s it detached.

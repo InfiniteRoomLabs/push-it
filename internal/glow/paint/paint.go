@@ -123,28 +123,86 @@ func over(buf []byte, i int, r, g, b uint8, a float64) {
 	buf[i+3] = uint8(math.Round(255*a + float64(buf[i+3])*inv))
 }
 
+// frame holds everything Render/RenderGlow need to paint one w x h frame at
+// one elapsed time, precomputed once per frame instead of once per pixel:
+// EdgeAlpha only varies with distance from an edge (an alphaTab entry per
+// value in [0, width)), and HSVToRGB(HueAt(EdgePos(...))) for the Top/Bottom
+// edges only varies with x, and for Left/Right only varies with y, so each
+// needs only w or h entries rather than one per pixel.
+type frame struct {
+	w, h, width int
+	pulse       float64
+	alphaTab    []float64
+	top, bottom [][3]uint8
+	left, right [][3]uint8
+}
+
+func newFrame(w, h int, elapsed time.Duration) *frame {
+	width := GlowWidth(w, h)
+	alphaTab := make([]float64, width)
+	for d := 0; d < width; d++ {
+		alphaTab[d] = EdgeAlpha(float64(d), width)
+	}
+	top := make([][3]uint8, w)
+	bottom := make([][3]uint8, w)
+	for x := 0; x < w; x++ {
+		r, g, b := HSVToRGB(HueAt(EdgePos(Top, x, 0, w, h), elapsed))
+		top[x] = [3]uint8{r, g, b}
+		r, g, b = HSVToRGB(HueAt(EdgePos(Bottom, x, h-1, w, h), elapsed))
+		bottom[x] = [3]uint8{r, g, b}
+	}
+	left := make([][3]uint8, h)
+	right := make([][3]uint8, h)
+	for y := 0; y < h; y++ {
+		r, g, b := HSVToRGB(HueAt(EdgePos(Left, 0, y, w, h), elapsed))
+		left[y] = [3]uint8{r, g, b}
+		r, g, b = HSVToRGB(HueAt(EdgePos(Right, w-1, y, w, h), elapsed))
+		right[y] = [3]uint8{r, g, b}
+	}
+	return &frame{
+		w: w, h: h, width: width,
+		pulse:    OpacityAt(elapsed),
+		alphaTab: alphaTab,
+		top:      top, bottom: bottom,
+		left: left, right: right,
+	}
+}
+
 // renderPixel composes top, bottom, left, right onto a zeroed pixel (x, y),
 // then scales the composed result by pulse. The pulse is applied after
 // composition, not per strip, so the glow is uniformly bright along every
 // edge and corners are never brighter than edge midpoints.
-func renderPixel(buf []byte, x, y, w, h, width int, pulse float64, elapsed time.Duration) {
-	i := (y*w + x) * 4
+func (f *frame) renderPixel(buf []byte, x, y int) {
+	i := (y*f.w + x) * 4
 	buf[i], buf[i+1], buf[i+2], buf[i+3] = 0, 0, 0, 0
-	type contrib struct {
-		e Edge
-		d float64
-	}
-	cs := [4]contrib{{Top, float64(y)}, {Bottom, float64(h - 1 - y)}, {Left, float64(x)}, {Right, float64(w - 1 - x)}}
-	for _, c := range cs {
-		a := EdgeAlpha(c.d, width)
-		if a <= 0 {
-			continue
+
+	if d := y; d < f.width {
+		if a := f.alphaTab[d]; a > 0 {
+			c := f.top[x]
+			over(buf, i, c[0], c[1], c[2], a)
 		}
-		r, g, b := HSVToRGB(HueAt(EdgePos(c.e, x, y, w, h), elapsed))
-		over(buf, i, r, g, b, a)
 	}
+	if d := f.h - 1 - y; d < f.width {
+		if a := f.alphaTab[d]; a > 0 {
+			c := f.bottom[x]
+			over(buf, i, c[0], c[1], c[2], a)
+		}
+	}
+	if d := x; d < f.width {
+		if a := f.alphaTab[d]; a > 0 {
+			c := f.left[y]
+			over(buf, i, c[0], c[1], c[2], a)
+		}
+	}
+	if d := f.w - 1 - x; d < f.width {
+		if a := f.alphaTab[d]; a > 0 {
+			c := f.right[y]
+			over(buf, i, c[0], c[1], c[2], a)
+		}
+	}
+
 	for k := 0; k < 4; k++ {
-		buf[i+k] = uint8(math.Round(float64(buf[i+k]) * pulse))
+		buf[i+k] = uint8(math.Round(float64(buf[i+k]) * f.pulse))
 	}
 }
 
@@ -157,11 +215,10 @@ func Render(buf []byte, w, h int, elapsed time.Duration) {
 	if len(buf) < w*h*4 {
 		return
 	}
-	width := GlowWidth(w, h)
-	pulse := OpacityAt(elapsed)
+	f := newFrame(w, h, elapsed)
 	for y := 0; y < h; y++ {
 		for x := 0; x < w; x++ {
-			renderPixel(buf, x, y, w, h, width, pulse, elapsed)
+			f.renderPixel(buf, x, y)
 		}
 	}
 }
@@ -175,8 +232,8 @@ func RenderGlow(buf []byte, w, h int, elapsed time.Duration) {
 	if len(buf) < w*h*4 {
 		return
 	}
-	width := GlowWidth(w, h)
-	pulse := OpacityAt(elapsed)
+	f := newFrame(w, h, elapsed)
+	width := f.width
 	for y := 0; y < h; y++ {
 		edgeRow := y < width || y >= h-width
 		for x := 0; x < w; x++ {
@@ -184,7 +241,7 @@ func RenderGlow(buf []byte, w, h int, elapsed time.Duration) {
 				x = w - width - 1 // skip the interior run
 				continue
 			}
-			renderPixel(buf, x, y, w, h, width, pulse, elapsed)
+			f.renderPixel(buf, x, y)
 		}
 	}
 }

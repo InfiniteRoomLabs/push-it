@@ -4,7 +4,7 @@
 
 **Goal:** Replace the hard 14 px rainbow frame with a feathered glow: fully opaque at the screen edge, fading to transparent inward over 96 px (at 1080p, scaled by the shorter screen side) with a quadratic falloff, corners rendered as two overlapping glows - identically on GNOME, macOS, and Windows.
 
-**Architecture:** The look is defined once in `internal/glow/paint` (the reference) as four full-length edge strips composited in the order top, bottom, left, right with source-over; each strip's colour is the rainbow along its edge and its alpha is `pulse * (1 - d/W)^2` where `d` is the distance from that edge. The GNOME (Cairo) and macOS (Core Animation) renderers draw the same four strips with an axial hue gradient masked by a perpendicular alpha gradient; Windows uses `paint` directly.
+**Architecture:** The look is defined once in `internal/glow/paint` (the reference) as four full-length edge strips composited in the order top, bottom, left, right with source-over; each strip's colour is the rainbow along its edge and its alpha is `(1 - d/W)^2` where `d` is the distance from that edge; the opacity pulse scales the composed result. The GNOME (Cairo) and macOS (Core Animation) renderers draw the same four strips with an axial hue gradient masked by a perpendicular alpha gradient; Windows uses `paint` directly.
 
 **Tech Stack:** unchanged (Go, gjs/Cairo, Swift/Core Animation).
 
