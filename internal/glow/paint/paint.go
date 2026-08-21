@@ -110,8 +110,8 @@ func HSVToRGB(h float64) (r, g, b uint8) {
 }
 
 // over composites one edge strip's contribution source-over into buf at
-// pixel byte offset i. a is the strip alpha (pulse already applied), r/g/b
-// its colour.
+// pixel byte offset i. a is the strip's geometric alpha (EdgeAlpha; the
+// opacity pulse is applied later, to the composed result), r/g/b its colour.
 func over(buf []byte, i int, r, g, b uint8, a float64) {
 	if a <= 0 {
 		return
@@ -123,7 +123,10 @@ func over(buf []byte, i int, r, g, b uint8, a float64) {
 	buf[i+3] = uint8(math.Round(255*a + float64(buf[i+3])*inv))
 }
 
-// renderPixel composes top, bottom, left, right onto a zeroed pixel (x, y).
+// renderPixel composes top, bottom, left, right onto a zeroed pixel (x, y),
+// then scales the composed result by pulse. The pulse is applied after
+// composition, not per strip, so the glow is uniformly bright along every
+// edge and corners are never brighter than edge midpoints.
 func renderPixel(buf []byte, x, y, w, h, width int, pulse float64, elapsed time.Duration) {
 	i := (y*w + x) * 4
 	buf[i], buf[i+1], buf[i+2], buf[i+3] = 0, 0, 0, 0
@@ -133,18 +136,23 @@ func renderPixel(buf []byte, x, y, w, h, width int, pulse float64, elapsed time.
 	}
 	cs := [4]contrib{{Top, float64(y)}, {Bottom, float64(h - 1 - y)}, {Left, float64(x)}, {Right, float64(w - 1 - x)}}
 	for _, c := range cs {
-		a := pulse * EdgeAlpha(c.d, width)
+		a := EdgeAlpha(c.d, width)
 		if a <= 0 {
 			continue
 		}
 		r, g, b := HSVToRGB(HueAt(EdgePos(c.e, x, y, w, h), elapsed))
 		over(buf, i, r, g, b, a)
 	}
+	for k := 0; k < 4; k++ {
+		buf[i+k] = uint8(math.Round(float64(buf[i+k]) * pulse))
+	}
 }
 
 // Render fills buf (premultiplied BGRA, row-major, w*h*4 bytes) with the
 // glow at the given elapsed time. Pixels farther than GlowWidth from every
-// edge are fully transparent. A buffer that is too small is left untouched.
+// edge are fully transparent. The opacity pulse scales the composed result,
+// so the glow is uniformly bright along every edge and corners are never
+// brighter than edge midpoints. A buffer that is too small is left untouched.
 func Render(buf []byte, w, h int, elapsed time.Duration) {
 	if len(buf) < w*h*4 {
 		return

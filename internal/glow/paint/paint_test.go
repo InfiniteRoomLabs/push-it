@@ -82,6 +82,10 @@ func TestRenderCompositesOverlappingStrips(t *testing.T) {
 	Render(buf, w, h, 0)
 	alpha := func(x, y int) byte { return buf[(y*w+x)*4+3] }
 
+	// The opacity pulse scales the composed result (applied after the four
+	// strips are composed), so edges are uniformly bright and corners are
+	// never brighter than edge midpoints: (100,0), (0,50), and the corner
+	// (0,0) all equal round(255*OpacityAt(0)).
 	want := uint8(math.Round(255 * OpacityAt(0)))
 	if a := alpha(100, 0); a != want {
 		t.Fatalf("alpha(100,0) = %d, want %d", a, want)
@@ -89,14 +93,8 @@ func TestRenderCompositesOverlappingStrips(t *testing.T) {
 	if a := alpha(0, 50); a != want {
 		t.Fatalf("alpha(0,50) = %d, want %d", a, want)
 	}
-	// (0,0) is on both the top and left edges (d=0 for each, EdgeAlpha=1),
-	// so per Global Constraints ("alpha = 1-(1-aH)(1-aV)", pulse multiplies
-	// each strip's alpha before composing) it composites to more than a
-	// single strip's alpha, not to OpacityAt(0) alone.
-	aCorner := OpacityAt(0) * EdgeAlpha(0, width)
-	wantCorner0 := uint8(math.Round(255 * (1 - (1-aCorner)*(1-aCorner))))
-	if a := alpha(0, 0); a != wantCorner0 {
-		t.Fatalf("alpha(0,0) (corner) = %d, want %d", a, wantCorner0)
+	if a := alpha(0, 0); a != want {
+		t.Fatalf("alpha(0,0) (corner) = %d, want %d", a, want)
 	}
 
 	wantEdge := uint8(math.Round(255 * OpacityAt(0) * EdgeAlpha(4, width)))
@@ -104,15 +102,18 @@ func TestRenderCompositesOverlappingStrips(t *testing.T) {
 		t.Fatalf("alpha(4,50) = %d, want ~%d", a, wantEdge)
 	}
 
-	aH := OpacityAt(0) * EdgeAlpha(4, width)
-	aV := aH
-	wantCorner := uint8(math.Round(255 * (1 - (1-aH)*(1-aV))))
+	e := EdgeAlpha(4, width)
+	wantCorner := uint8(math.Round(255 * OpacityAt(0) * (1 - (1-e)*(1-e))))
 	if a := alpha(4, 4); absDiff(a, wantCorner) > 1 {
 		t.Fatalf("alpha(4,4) = %d, want ~%d", a, wantCorner)
 	}
 
 	if a := alpha(100, 50); a != 0 {
 		t.Fatalf("alpha(100,50) (interior) = %d, want 0", a)
+	}
+
+	if a0, aMid := alpha(0, 0), alpha(100, 0); a0 > aMid {
+		t.Fatalf("corner alpha %d must not exceed edge-midpoint alpha %d", a0, aMid)
 	}
 
 	for i := 0; i < len(buf); i += 4 {
