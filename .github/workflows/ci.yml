@@ -45,3 +45,29 @@ jobs:
       - run: go test ./...
       - if: matrix.os == 'ubuntu-latest'
         run: go test -race ./...
+
+  gnome-extension:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y gjs
+      - run: gjs -m internal/glow/gnome/tests/run.js
+
+  macos-helper:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: sh internal/glow/macos/build.sh
+      - name: build and test darwin with the embedded helper
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          go build -tags glowhelper ./cmd/push-it
+          go test -tags glowhelper ./internal/glow/...
+      - uses: actions/upload-artifact@v4
+        with:
+          name: glow-macos-universal
+          path: internal/glow/macos/bin/glow-macos

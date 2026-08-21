@@ -36,7 +36,7 @@ Then drop `.mp3` or `.wav` files into the clips directory it prints (or cut your
   # <<< push-it <<<
   ```
 
-- Glow only (future releases): will install the GNOME Shell extension on Linux or extract the helper app on macOS. In this release enabling glow only records the preference; see [glow.md](glow.md).
+- Glow only: on Linux extracts and enables the GNOME Shell extension (log out and back in once - Wayland cannot hot-load extensions); on macOS extracts the helper app next to the config; on Windows nothing to install. See [glow.md](glow.md).
 
 Everything it did is recorded in `config.json` under `install_state`, and `push-it uninstall` reverses exactly that - your own hooks are restored byte-for-byte.
 
