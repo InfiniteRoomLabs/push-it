@@ -23,6 +23,14 @@ push-it doctor             # what's configured, what's reachable
 NO_PUSH_IT=1 git push      # quiet push
 ```
 
+## Known limitations
+
+- Linux sound needs a running PulseAudio or PipeWire (`pipewire-pulse`) server; a bare ALSA system gets no sound, and `push-it doctor` does not probe for it yet.
+- The GNOME glow extension needs one logout/login after `install --glow` (Wayland cannot hot-load extensions).
+- `install.sh --all` and `push-it install --all` ask for your Hue bridge and key; without a Hue light, answer `n` or use `--sound --glow`.
+- macOS glow ships only in the release binaries (`install.sh` or the release tarball); a `go install` build has no macOS glow.
+- Windows audio, the detached hook process, and the Windows glow are CI-built and unit-tested but not yet hand-verified on real hardware; the macOS glow helper is CI-built and signed ad hoc, also not yet hand-verified.
+
 ## Docs
 
 - [docs/install.md](docs/install.md)  -  install, uninstall, `doctor`

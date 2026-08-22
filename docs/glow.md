@@ -15,6 +15,8 @@ All three renderers mirror `internal/glow/paint` (the reference renderer): the G
 
 `push-it doctor` shows `glow: enabled=... backend=gnome|macos|windows|none`.
 
+Each release also attaches `pushit-glow@infiniteroomlabs.com.shell-extension.zip` for manual installation (`gnome-extensions install <zip>`) or inspection; `push-it install --glow` does not need it, since the same files are embedded in the binary. The zip is not listed in `checksums.txt`.
+
 ## Parameters
 
 Glow width 96 px at 1080p, scaled by the shorter screen side, fading inward with a quadratic falloff; corners are rendered as two overlapping glows. One full rainbow rotation every 2 s, opacity pulsing between 0.55 and 1.0 every 0.6 s. The constants are defined once in `internal/glow/paint/paint.go` and re-exported under the same names by `internal/glow/glow.go`; every renderer (GNOME, macOS, Windows) is mirrored from that single source.
