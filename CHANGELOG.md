@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Release notes: `.goreleaser.yaml` no longer sets `changelog.disable`, which made goreleaser skip loading `--release-notes` and published v0.1.0 with an empty body (patched in place).
+
+### Changed
+
+- Dogfood of v0.1.0 on Linux/GNOME via `install.sh --sound --hue --glow --yes`: checksum verified, binary replaced in `~/.local/bin`, `push-it version` prints `v0.1.0 (67ddec5)`, `doctor` reports sound/Hue/glow enabled, and a real `git push` played a clip with the Hue burst; the release workflow published six archives, `checksums.txt`, and the GNOME extension zip on the first tag. macOS and Windows remain CI-verified only.
+
 ## [0.1.0] - 2026-08-22
 
 ### Changed

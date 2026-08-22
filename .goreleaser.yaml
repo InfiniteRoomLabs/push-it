@@ -47,8 +47,11 @@ checksum:
   name_template: checksums.txt
   algorithm: sha256
 
+# release.yml passes --release-notes <file>, which replaces the generated changelog.
+# Do not set changelog.disable: it skips the whole changelog pipe, including
+# loading that file, and the release body comes out empty.
 changelog:
-  disable: true
+  use: git
 
 release:
   github:
