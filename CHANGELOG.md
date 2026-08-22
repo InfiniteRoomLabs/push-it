@@ -43,3 +43,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - GNOME extension: the first frame of the glow animation now starts at its pulsed opacity instead of full opacity, matching every subsequent frame.
 - `install`: a failed glow install now disables glow instead of leaving it enabled, and prints why.
+- Installer only appends to hooks whose shebang is an allowlisted POSIX-compatible shell (sh, bash, dash, zsh, ksh, ash, including the `env -S` form); pwsh/fish/csh/tcsh hooks are refused with instructions instead of being broken. Appending now preserves the hook's existing mode bits, only adding the owner exec bit rather than forcing group/other exec too.

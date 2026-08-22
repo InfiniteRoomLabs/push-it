@@ -178,6 +178,60 @@ func TestWireAppendMakesHookExecutable(t *testing.T) {
 	}
 }
 
+func TestIsShellInterpreter(t *testing.T) {
+	cases := map[string]bool{
+		"":                           true, // no shebang: git runs it via sh
+		"echo hi":                    true,
+		"#!/bin/sh":                  true,
+		"#!/bin/bash -e":             true,
+		"#!/usr/bin/dash":            true,
+		"#!/bin/zsh":                 true,
+		"#!/bin/ksh":                 true,
+		"#!/bin/ash":                 true,
+		"#!/usr/bin/env bash":        true,
+		"#!/usr/bin/env -S bash -eu": true,
+		"#!/usr/bin/env -S -i bash":  true,
+		"#!/usr/bin/pwsh":            false,
+		"#!/usr/bin/env pwsh":        false,
+		"#!/usr/bin/fish":            false,
+		"#!/bin/csh":                 false,
+		"#!/bin/tcsh":                false,
+		"#!/usr/bin/env python3":     false,
+		"#!/usr/bin/env -S":          false,
+		"#!":                         false,
+		"#!/usr/bin/env":             false,
+	}
+	for line, want := range cases {
+		if got := isShellInterpreter(line); got != want {
+			t.Errorf("isShellInterpreter(%q) = %v, want %v", line, got, want)
+		}
+	}
+}
+
+func TestWireHookAppendPreservesMode(t *testing.T) {
+	cfgDir, g := setup(t)
+	hooks := filepath.Join(t.TempDir(), "myhooks")
+	_ = os.MkdirAll(hooks, 0o755)
+	file := filepath.Join(hooks, "pre-push")
+	_ = os.WriteFile(file, []byte("#!/bin/bash\necho hi\n"), 0o700)
+	_ = g.Set("core.hooksPath", hooks)
+
+	var st config.InstallState
+	if err := WireHook(g, cfgDir, "/opt/push-it", &st); err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS == "windows" {
+		return // no exec-bit semantics to assert
+	}
+	info, err := os.Stat(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o700 {
+		t.Fatalf("mode = %o, want 0700 (user's mode plus exec bits, not 0755)", got)
+	}
+}
+
 func TestBlockEscapesSingleQuotes(t *testing.T) {
 	b := Block("/x/it's/push-it")
 	if !strings.Contains(b, `'/x/it'\''s/push-it' hook pre-push`) {

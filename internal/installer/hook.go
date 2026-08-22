@@ -23,11 +23,17 @@ func Block(exe string) string {
 	return fmt.Sprintf("%s\n'%s' hook pre-push \"$@\" || true\n%s\n", MarkerStart, quoted, MarkerEnd)
 }
 
-// isShellInterpreter reports whether firstLine is either not a shebang line
-// (git runs a hook with no shebang via sh, so that's treated as shell) or a
-// shebang whose interpreter basename ends in "sh" - covering /bin/sh,
-// /bin/bash, /bin/dash, /bin/zsh, and the "#!/usr/bin/env <interp>" form of
-// each.
+// shellInterpreters is the explicit allowlist of interpreters whose syntax
+// accepts the push-it block verbatim. Anything else (pwsh, fish, csh, tcsh,
+// python, ...) is refused rather than risk breaking every push.
+var shellInterpreters = map[string]bool{
+	"sh": true, "bash": true, "dash": true, "zsh": true, "ksh": true, "ash": true,
+}
+
+// isShellInterpreter reports whether a hook starting with firstLine can have
+// the push-it block appended. A file with no shebang is treated as shell
+// because git runs it via sh. "#!/usr/bin/env [-S] [-flags] <interp>" is
+// unwrapped to <interp>.
 func isShellInterpreter(firstLine string) bool {
 	if !strings.HasPrefix(firstLine, "#!") {
 		return true
@@ -37,10 +43,20 @@ func isShellInterpreter(firstLine string) bool {
 		return false
 	}
 	interp := fields[0]
-	if filepath.Base(interp) == "env" && len(fields) > 1 {
-		interp = fields[1]
+	if filepath.Base(interp) == "env" {
+		interp = ""
+		for _, f := range fields[1:] {
+			if strings.HasPrefix(f, "-") {
+				continue // -S, -i, and other env flags
+			}
+			interp = f
+			break
+		}
+		if interp == "" {
+			return false
+		}
 	}
-	return strings.HasSuffix(filepath.Base(interp), "sh")
+	return shellInterpreters[filepath.Base(interp)]
 }
 
 func expandHome(p string) string {
@@ -115,10 +131,19 @@ func WireHook(g Git, cfgDir, exe string, st *config.InstallState) error {
 		if !strings.HasSuffix(content, "\n") {
 			content += "\n"
 		}
-		if err := os.WriteFile(file, []byte(content+Block(exe)), 0o755); err != nil {
+		info, err := os.Stat(file)
+		if err != nil {
 			return err
 		}
-		if err := os.Chmod(file, 0o755); err != nil {
+		// Add the owner exec bit only: enough for git (running as this
+		// user) to execute the hook, without loosening group/other bits
+		// the user may have deliberately restricted (e.g. a private 0700
+		// hook must not gain group/other exec from an append).
+		mode := info.Mode().Perm() | 0o100
+		if err := os.WriteFile(file, []byte(content+Block(exe)), mode); err != nil {
+			return err
+		}
+		if err := os.Chmod(file, mode); err != nil {
 			return err
 		}
 	}
