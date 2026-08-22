@@ -29,9 +29,9 @@ jobs:
           path: internal/glow/macos/bin/
       - name: verify the macOS helper landed
         run: |
+          test -s internal/glow/macos/bin/glow-macos
           chmod +x internal/glow/macos/bin/glow-macos
           file internal/glow/macos/bin/glow-macos
-          test -s internal/glow/macos/bin/glow-macos
       - name: release notes from CHANGELOG.md
         run: sh scripts/changelog-notes.sh "$GITHUB_REF_NAME" > /tmp/notes.md
       - uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6

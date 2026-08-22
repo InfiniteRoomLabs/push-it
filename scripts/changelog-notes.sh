@@ -11,6 +11,7 @@ ver=${tag#v}
 file=${CHANGELOG:-CHANGELOG.md}
 notes=$(awk -v ver="$ver" '
   /^## \[/ { if (found) exit; found = ($0 ~ "^## \\[" ver "\\]") ; next }
+  /^\[[^]]*\]: / { if (found) exit }
   found { print }
 ' "$file")
 # trim leading/trailing blank lines

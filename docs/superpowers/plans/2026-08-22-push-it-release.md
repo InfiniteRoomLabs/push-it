@@ -23,6 +23,12 @@
 - **GitHub Actions pinned by commit SHA** with a `# vN` trailing comment (supply-chain posture). Resolve SHAs with `gh api repos/<owner>/<repo>/git/ref/tags/<tag> --jq .object.sha` (if the ref is an annotated tag, dereference with `gh api repos/<owner>/<repo>/git/tags/<sha> --jq .object.sha`).
 - Remotes: `origin` (private mirror) and `github` (public). Tasks in this plan commit on a feature branch; the orchestrator merges and pushes to both.
 
+## Deviations (ruled during execution)
+
+- Task 2 appends with `mode | 0o100` (owner exec only), not `| 0o111`, so a private hook is never widened.
+- Task 3 builds the GNOME extension zip into `dist-extra/`, not `dist/`, because goreleaser's dist-empty check runs after before-hooks and `--clean` would wipe it.
+- Tasks 3/4 pin the goreleaser binary `2.17.1` in CI (not `~> v2`) to match `mise.toml`.
+
 ---
 
 ### Task 1: `version` prints semver + commit; build task is static

@@ -9,6 +9,7 @@
 set -eu
 
 version=${PUSH_IT_VERSION:-latest}
+case $version in v*|latest) ;; *) version=v$version ;; esac
 bin_dir=${PUSH_IT_BIN_DIR:-$HOME/.local/bin}
 if [ -n "${PUSH_IT_BASE_URL:-}" ]; then
   base=$PUSH_IT_BASE_URL
@@ -72,7 +73,7 @@ case ":$PATH:" in
 esac
 
 rm -rf "$tmp"
-if [ ! -t 0 ] && (exec 3<>/dev/tty) 2>/dev/null; then
+if [ ! -t 0 ] && (exec 3</dev/tty) 2>/dev/null; then
   exec "$bin_dir/push-it" install ${1+"$@"} </dev/tty
 fi
 exec "$bin_dir/push-it" install ${1+"$@"}
