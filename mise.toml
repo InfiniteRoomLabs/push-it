@@ -11,11 +11,23 @@ run = [
   "test -z \"$(gofmt -l .)\" || (gofmt -l . && exit 1)",
   "go vet ./...",
   "staticcheck ./...",
+  "mise run lint:scripts",
 ]
 
 [tasks.build]
 env = { CGO_ENABLED = "0" }
 run = "go build -ldflags \"-s -w -X main.version=$(git describe --tags --always --dirty) -X main.commit=$(git rev-parse --short HEAD)\" -o bin/push-it ./cmd/push-it"
+
+[tasks.release]
+description = "Tag vX.Y.Z (needs a CHANGELOG section) and push the tag to every remote"
+run = "sh scripts/release.sh {{arg(name='version')}}"
+
+[tasks."lint:scripts"]
+run = [
+  "shellcheck -s sh install.sh scripts/*.sh 2>/dev/null || shellcheck -s sh scripts/*.sh",
+  "sh scripts/test-changelog-notes.sh",
+  "goreleaser check",
+]
 
 [tasks."glow:gnome:test"]
 run = "gjs -m internal/glow/gnome/tests/run.js"

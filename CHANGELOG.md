@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Release tooling: `.goreleaser.yaml` (linux/darwin/windows x amd64/arm64, static, darwin with the embedded glow helper, checksums, GNOME extension zip), `scripts/changelog-notes.sh`, and `mise run release -- vX.Y.Z`, which refuses to tag without a matching changelog section. CI validates the goreleaser config and shellchecks the scripts.
 - CI: gjs tests for the GNOME extension and a macOS job that builds the universal helper and tests the darwin build with it embedded.
 - CLI tests split per source file with flag/exit-code coverage for play, hue, glow, and clips.
 - `CLAUDE.md`: agent-facing contract for the repo (layout, hard rules, commit/test conventions, review tiers).

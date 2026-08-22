@@ -23,6 +23,14 @@ jobs:
         with:
           version: "2026.2"
           install-go: false
+      - name: shell scripts
+        run: |
+          shellcheck -s sh scripts/*.sh
+          sh scripts/test-changelog-notes.sh
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          args: check
       - name: cross-compile without cgo
         env:
           CGO_ENABLED: "0"

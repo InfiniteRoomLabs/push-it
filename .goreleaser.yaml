@@ -1,0 +1,60 @@
+# goreleaser 2.x - see https://goreleaser.com
+version: 2
+
+project_name: push-it
+
+before:
+  hooks:
+    # Built outside dist/: goreleaser's own dist-emptiness check runs after
+    # before-hooks, so a hook that seeds dist/ trips "dist is not empty".
+    - sh -c "rm -f dist-extra/pushit-glow@infiniteroomlabs.com.shell-extension.zip && mkdir -p dist-extra && cd internal/glow/gnome/ext && zip -qr ../../../../dist-extra/pushit-glow@infiniteroomlabs.com.shell-extension.zip ."
+
+builds:
+  - id: push-it
+    main: ./cmd/push-it
+    binary: push-it
+    env: [CGO_ENABLED=0]
+    goos: [linux, windows]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w -X main.version={{ .Tag }} -X main.commit={{ .ShortCommit }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+  - id: push-it-darwin
+    main: ./cmd/push-it
+    binary: push-it
+    env: [CGO_ENABLED=0]
+    goos: [darwin]
+    goarch: [amd64, arm64]
+    tags: [glowhelper]
+    ldflags:
+      - -s -w -X main.version={{ .Tag }} -X main.commit={{ .ShortCommit }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: default
+    ids: [push-it, push-it-darwin]
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - LICENSE
+      - README.md
+      - docs/*.md
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+changelog:
+  disable: true
+
+release:
+  github:
+    owner: InfiniteRoomLabs
+    name: push-it
+  draft: false
+  prerelease: auto
+  extra_files:
+    - glob: dist-extra/pushit-glow@infiniteroomlabs.com.shell-extension.zip
