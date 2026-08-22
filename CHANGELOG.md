@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `install.sh`: dependency-free POSIX bootstrap (`curl ... | sh -s -- --all`) that downloads the latest release for the host, verifies `checksums.txt`, installs to `~/.local/bin`, and runs `push-it install`; tested end to end in CI against a local fake release.
 - Release tooling: `.goreleaser.yaml` (linux/darwin/windows x amd64/arm64, static, darwin with the embedded glow helper, checksums, GNOME extension zip), `scripts/changelog-notes.sh`, and `mise run release -- vX.Y.Z`, which refuses to tag without a matching changelog section. CI validates the goreleaser config and shellchecks the scripts.
 - `release.yml`: on every `v*` tag, reruns the full CI workflow as a gate, pulls the universal macOS glow helper from that run, and publishes the goreleaser artifacts with release notes taken from the tag's `CHANGELOG.md` section. All GitHub Actions are pinned by commit SHA.
 - CI: gjs tests for the GNOME extension and a macOS job that builds the universal helper and tests the darwin build with it embedded.

@@ -7,11 +7,12 @@ Ships no audio  -  you cut your own clips from a track you own with the bundled 
 ## Install
 
 ```sh
-go install github.com/InfiniteRoomLabs/push-it/cmd/push-it@latest
-push-it install            # asks: sound? hue? glow?
+curl -fsSL https://raw.githubusercontent.com/InfiniteRoomLabs/push-it/main/install.sh | sh -s -- --all
 ```
 
-Prebuilt binaries for Linux, macOS, and Windows (amd64 + arm64) and a one-line `install.sh` come with the first tagged release. Details, kill switches, and uninstall: [docs/install.md](docs/install.md).
+That downloads the latest release for your OS/arch (Linux and macOS, amd64 and arm64), verifies its checksum, puts `push-it` in `~/.local/bin`, and runs `push-it install --all`. Drop `--all` to be asked per component, or pass `--sound`, `--hue`, `--glow` explicitly. Windows: grab the zip from the [releases page](https://github.com/InfiniteRoomLabs/push-it/releases) and run `push-it install`. From source: `go install github.com/InfiniteRoomLabs/push-it/cmd/push-it@latest` (note: a source build has no macOS glow; see [docs/glow.md](docs/glow.md)).
+
+Details, kill switches, and uninstall: [docs/install.md](docs/install.md).
 
 ## Usage
 

@@ -24,8 +24,9 @@ run = "sh scripts/release.sh {{arg(name='version')}}"
 
 [tasks."lint:scripts"]
 run = [
-  "shellcheck -s sh install.sh scripts/*.sh 2>/dev/null || shellcheck -s sh scripts/*.sh",
+  "shellcheck -s sh install.sh scripts/*.sh",
   "sh scripts/test-changelog-notes.sh",
+  "sh scripts/test-install-sh.sh",
   "goreleaser check",
 ]
 

@@ -6,12 +6,15 @@ Linux needs a running PulseAudio or PipeWire (`pipewire-pulse`) server - the des
 
 ## Quick start
 
-Until the first release ships (`install.sh` and prebuilt binaries arrive with v0.1.0), install from source:
-
 ```sh
-go install github.com/InfiniteRoomLabs/push-it/cmd/push-it@latest
-push-it install
+curl -fsSL https://raw.githubusercontent.com/InfiniteRoomLabs/push-it/main/install.sh | sh -s -- --all
 ```
+
+`install.sh` downloads the latest release for your OS/arch (Linux and macOS, amd64 and arm64), verifies its `checksums.txt` entry, puts `push-it` in `~/.local/bin`, and runs `push-it install "$@"` with whatever flags you passed. Env overrides: `PUSH_IT_VERSION` (default `latest`, or pin a tag like `v0.1.0`), `PUSH_IT_BIN_DIR` (default `~/.local/bin`).
+
+Windows: grab the zip from the [releases page](https://github.com/InfiniteRoomLabs/push-it/releases) and run `push-it install`.
+
+From source: `go install github.com/InfiniteRoomLabs/push-it/cmd/push-it@latest` then `push-it install` (note: a source build has no macOS glow; release binaries are built with `-tags glowhelper` - see [glow.md](glow.md)).
 
 `push-it install` with no flags asks three yes/no questions (sound, Hue, glow). Or be explicit:
 
