@@ -10,7 +10,7 @@ Linux needs a running PulseAudio or PipeWire (`pipewire-pulse`) server - the des
 curl -fsSL https://raw.githubusercontent.com/InfiniteRoomLabs/push-it/main/install.sh | sh -s -- --all
 ```
 
-`install.sh` downloads the latest release for your OS/arch (Linux and macOS, amd64 and arm64), verifies its `checksums.txt` entry, puts `push-it` in `~/.local/bin`, and runs `push-it install "$@"` with whatever flags you passed. Env overrides: `PUSH_IT_VERSION` (default `latest`, or pin a tag like `v0.1.0`), `PUSH_IT_BIN_DIR` (default `~/.local/bin`).
+`install.sh` downloads the latest release for your OS/arch (Linux and macOS, amd64 and arm64), verifies its `checksums.txt` entry, puts `push-it` in `~/.local/bin`, and runs `push-it install "$@"` with whatever flags you passed. Env overrides: `PUSH_IT_VERSION` (default `latest`, or pin a tag like `v0.1.0`), `PUSH_IT_BIN_DIR` (default `~/.local/bin`). The one-liner re-attaches your terminal for the sound/Hue/glow questions even though it's piped through `sh`; on a box with no `/dev/tty` (a container, a CI runner), skip the questions by passing flags (`--sound --yes`, `--all`, etc.).
 
 Windows: grab the zip from the [releases page](https://github.com/InfiniteRoomLabs/push-it/releases) and run `push-it install`.
 

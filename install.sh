@@ -50,13 +50,13 @@ sha256() {
   fi
 }
 
-tmp=$(mktemp -d)
+tmp=$(mktemp -d 2>/dev/null || mktemp -d -t push-it)
 trap 'rm -rf "$tmp"' EXIT
 echo "downloading $base/$asset"
 fetch "$base/$asset" "$tmp/$asset"
 fetch "$base/checksums.txt" "$tmp/checksums.txt"
 
-want=$(grep " $asset\$" "$tmp/checksums.txt" | cut -d' ' -f1)
+want=$(awk -v a="$asset" '$2==a {print $1}' "$tmp/checksums.txt")
 [ -n "$want" ] || { echo "install.sh: $asset not listed in checksums.txt" >&2; exit 1; }
 got=$(sha256 "$tmp/$asset")
 [ "$got" = "$want" ] || { echo "install.sh: checksum mismatch for $asset (got $got, want $want)" >&2; exit 1; }
@@ -71,4 +71,8 @@ case ":$PATH:" in
   *) echo "note: $bin_dir is not on your PATH" >&2 ;;
 esac
 
-exec "$bin_dir/push-it" install "$@"
+rm -rf "$tmp"
+if [ ! -t 0 ] && (exec 3<>/dev/tty) 2>/dev/null; then
+  exec "$bin_dir/push-it" install ${1+"$@"} </dev/tty
+fi
+exec "$bin_dir/push-it" install ${1+"$@"}
