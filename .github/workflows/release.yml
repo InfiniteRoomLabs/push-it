@@ -1,0 +1,42 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    needs: ci
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: glow-macos-universal
+          path: internal/glow/macos/bin/
+      - name: verify the macOS helper landed
+        run: |
+          chmod +x internal/glow/macos/bin/glow-macos
+          file internal/glow/macos/bin/glow-macos
+          test -s internal/glow/macos/bin/glow-macos
+      - name: release notes from CHANGELOG.md
+        run: sh scripts/changelog-notes.sh "$GITHUB_REF_NAME" > /tmp/notes.md
+      - uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6
+        with:
+          version: "2.17.1"
+          args: release --clean --release-notes /tmp/notes.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
