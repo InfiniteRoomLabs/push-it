@@ -40,14 +40,29 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func TestVersionSubcommand(t *testing.T) {
-	var out, errOut bytes.Buffer
-	code := run([]string{"version"}, strings.NewReader(""), &out, &errOut)
-	if code != 0 {
-		t.Fatalf("exit code = %d, stderr = %q", code, errOut.String())
+func TestVersionDevWithoutCommit(t *testing.T) {
+	oldV, oldC := version, commit
+	t.Cleanup(func() { version, commit = oldV, oldC })
+	version, commit = "dev", ""
+	var out, errOut strings.Builder
+	if code := run([]string{"version"}, strings.NewReader(""), &out, &errOut); code != 0 {
+		t.Fatalf("exit %d, stderr %q", code, errOut.String())
 	}
-	if !strings.HasPrefix(out.String(), "push-it ") {
-		t.Fatalf("stdout = %q, want prefix %q", out.String(), "push-it ")
+	if got := out.String(); got != "push-it dev\n" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestVersionWithCommit(t *testing.T) {
+	oldV, oldC := version, commit
+	t.Cleanup(func() { version, commit = oldV, oldC })
+	version, commit = "v0.1.0", "abc1234"
+	var out, errOut strings.Builder
+	if code := run([]string{"version"}, strings.NewReader(""), &out, &errOut); code != 0 {
+		t.Fatalf("exit %d, stderr %q", code, errOut.String())
+	}
+	if got := out.String(); got != "push-it v0.1.0 (abc1234)\n" {
+		t.Fatalf("got %q", got)
 	}
 }
 

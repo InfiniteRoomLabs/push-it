@@ -14,7 +14,8 @@ run = [
 ]
 
 [tasks.build]
-run = "go build -o bin/push-it ./cmd/push-it"
+env = { CGO_ENABLED = "0" }
+run = "go build -ldflags \"-s -w -X main.version=$(git describe --tags --always --dirty) -X main.commit=$(git rev-parse --short HEAD)\" -o bin/push-it ./cmd/push-it"
 
 [tasks."glow:gnome:test"]
 run = "gjs -m internal/glow/gnome/tests/run.js"

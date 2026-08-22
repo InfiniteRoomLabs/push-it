@@ -8,8 +8,12 @@ import (
 	"sort"
 )
 
-// version is overwritten at build time via -ldflags "-X main.version=v1.2.3".
-var version = "dev"
+// version and commit are overwritten at build time via
+// -ldflags "-X main.version=v1.2.3 -X main.commit=abc1234".
+var (
+	version = "dev"
+	commit  = ""
+)
 
 type command func(args []string, stdin io.Reader, stdout, stderr io.Writer) int
 
@@ -18,7 +22,11 @@ var commands = map[string]command{}
 
 func init() {
 	commands["version"] = func(_ []string, _ io.Reader, stdout, _ io.Writer) int {
-		fmt.Fprintf(stdout, "push-it %s\n", version)
+		if commit == "" {
+			fmt.Fprintf(stdout, "push-it %s\n", version)
+		} else {
+			fmt.Fprintf(stdout, "push-it %s (%s)\n", version, commit)
+		}
 		return 0
 	}
 }
