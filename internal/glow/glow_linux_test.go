@@ -150,6 +150,108 @@ func TestUninstallGnomeRemovesFromGsettings(t *testing.T) {
 	}
 }
 
+func TestInstallGnomeIgnoresDconfWarningNoise(t *testing.T) {
+	// runCommand uses CombinedOutput, so a real `gsettings get` can arrive as
+	// stderr noise followed by the actual value on its own line. Pre-enable
+	// must still parse the value line, not the noise, and must not write the
+	// noise back into enabled-extensions.
+	t.Setenv("XDG_CURRENT_DESKTOP", "ubuntu:GNOME")
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("PUSH_IT_CONFIG_DIR", t.TempDir())
+	calls := stubExecDispatch(t, func(name string, args []string) ([]byte, error) {
+		if name == "gsettings" && len(args) > 0 && args[0] == "get" {
+			return []byte("dconf-WARNING: blah\n['other@x']\n"), nil
+		}
+		return nil, nil
+	})
+	var st config.InstallState
+	note, err := Install(&st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.ToLower(note), "log out") {
+		t.Fatalf("note = %q", note)
+	}
+	set := findSetCall(*calls)
+	if set == nil {
+		t.Fatalf("no gsettings set call, calls = %+v", *calls)
+	}
+	wantList := formatGVariantStrv([]string{"other@x", gnome.UUID})
+	want := []string{"set", "org.gnome.shell", "enabled-extensions", wantList}
+	if strings.Join(set.args, " ") != strings.Join(want, " ") {
+		t.Fatalf("set args = %v, want %v", set.args, want)
+	}
+}
+
+func TestInstallGnomeGarbageGsettingsOutputFallsBack(t *testing.T) {
+	t.Setenv("XDG_CURRENT_DESKTOP", "ubuntu:GNOME")
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("PUSH_IT_CONFIG_DIR", t.TempDir())
+	calls := stubExecDispatch(t, func(name string, args []string) ([]byte, error) {
+		if name == "gsettings" && len(args) > 0 && args[0] == "get" {
+			return []byte("oops"), nil
+		}
+		return nil, nil
+	})
+	var st config.InstallState
+	note, err := Install(&st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if set := findSetCall(*calls); set != nil {
+		t.Fatalf("gsettings set should not be called on unparseable output, got %+v", *set)
+	}
+	if !strings.Contains(note, "gnome-extensions enable") {
+		t.Fatalf("note should fall back to the manual-enable instructions, got %q", note)
+	}
+	if !strings.Contains(note, "automatic enable failed") {
+		t.Fatalf("note should surface the pre-enable failure reason, got %q", note)
+	}
+}
+
+func TestInstallGnomeMissingGsettingsStillTriesGnomeExtensions(t *testing.T) {
+	// gsettings absent, gnome-extensions present: the X11 hot-load attempt
+	// must still fire, and the fallback note must not claim gsettings failed
+	// (it was never tried).
+	t.Setenv("XDG_CURRENT_DESKTOP", "ubuntu:GNOME")
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("PUSH_IT_CONFIG_DIR", t.TempDir())
+	calls := stubExecDispatch(t, func(name string, args []string) ([]byte, error) {
+		return nil, nil
+	})
+	lookPath = func(name string) (string, error) {
+		if name == "gsettings" {
+			return "", errors.New("not found")
+		}
+		return "/usr/bin/stub", nil
+	}
+	var st config.InstallState
+	note, err := Install(&st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range *calls {
+		if c.name == "gsettings" {
+			t.Fatalf("gsettings should never be invoked when missing, got call %+v", c)
+		}
+	}
+	enabled := false
+	for _, c := range *calls {
+		if c.name == "gnome-extensions" && len(c.args) > 0 && c.args[0] == "enable" {
+			enabled = true
+		}
+	}
+	if !enabled {
+		t.Fatalf("gnome-extensions enable should still be attempted, calls = %+v", *calls)
+	}
+	if strings.Contains(note, "automatic enable failed") {
+		t.Fatalf("note should not blame a gsettings failure when gsettings is simply missing, got %q", note)
+	}
+	if !strings.Contains(note, "gnome-extensions enable") {
+		t.Fatalf("note should fall back to the manual-enable instructions, got %q", note)
+	}
+}
+
 func TestBackendIsGnome(t *testing.T) {
 	if Backend != "gnome" || !Available() {
 		t.Fatalf("Backend = %q", Backend)

@@ -109,7 +109,17 @@ func preEnableViaGsettings(ctx context.Context, enable bool) error {
 	if err != nil {
 		return fmt.Errorf("gsettings get: %s: %w", strings.TrimSpace(string(out)), err)
 	}
-	list := parseGVariantStrv(string(out))
+	// runCommand uses CombinedOutput, so a healthy value can arrive preceded
+	// by stderr noise (e.g. "dconf-WARNING ...\n['a@b']"). Take the last
+	// non-empty line - the value always comes last - and refuse to parse
+	// anything that doesn't look like a strv, rather than writing mangled
+	// junk back over the user's enabled-extensions.
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	raw := strings.TrimSpace(lines[len(lines)-1])
+	if !strings.HasPrefix(raw, "[") && !strings.HasPrefix(raw, "@as") {
+		return fmt.Errorf("gsettings get: unexpected output %q", raw)
+	}
+	list := parseGVariantStrv(raw)
 	has := false
 	for _, e := range list {
 		if e == gnome.UUID {
@@ -168,12 +178,15 @@ func installGnome(st *config.InstallState) (string, error) {
 	st.GnomeExtensionInstalled = true
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	preEnabled := preEnableViaGsettings(ctx, true) == nil
+	gerr := preEnableViaGsettings(ctx, true)
 	if _, err := lookPath("gnome-extensions"); err == nil {
 		_, _ = runCommand(ctx, "gnome-extensions", "enable", gnome.UUID) // hot-load on X11; harmless no-op otherwise
 	}
-	if preEnabled {
+	if gerr == nil {
 		return fmt.Sprintf("GNOME extension installed and enabled for your next login (extracted to %s); log out and back in once - Wayland cannot hot-load extensions", dir), nil
+	}
+	if _, err := lookPath("gsettings"); err == nil {
+		return fmt.Sprintf("extension extracted to %s; automatic enable failed: %v; run `gnome-extensions enable %s`, then log out and back in (Wayland cannot hot-load extensions)", dir, gerr, gnome.UUID), nil
 	}
 	return fmt.Sprintf("extension extracted to %s; run `gnome-extensions enable %s`, then log out and back in (Wayland cannot hot-load extensions)", dir, gnome.UUID), nil
 }

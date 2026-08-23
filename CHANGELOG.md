@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Config values are normalized on load with a warning instead of being used raw: volume is clamped to 0..1 (NaN resets to 0.7), the Hue light number is floored at 1, and a malformed PUSH_IT_HUE_LIGHT is reported instead of silently ignored. push-it doctor prints the warnings.
 - Release notes: `.goreleaser.yaml` no longer sets `changelog.disable`, which made goreleaser skip loading `--release-notes` and published v0.1.0 with an empty body (patched in place).
-- install --glow on GNOME now pre-enables the extension by writing the UUID into org.gnome.shell enabled-extensions (deduplicated, existing entries preserved), so no manual enable is needed after the logout; uninstall removes the UUID again. The gnome-extensions enable/disable attempts now run under a 10 s timeout.
+- install --glow on GNOME now pre-enables the extension by writing the UUID into org.gnome.shell enabled-extensions (deduplicated, existing entries preserved), so no manual enable is needed after the logout; uninstall removes the UUID again. The gnome-extensions enable/disable attempts now run under a 10 s timeout. Reading enabled-extensions ignores dconf warnings and refuses to write back an unparseable list, instead falling back to the manual-enable note with the failure reason.
 
 ### Changed
 
