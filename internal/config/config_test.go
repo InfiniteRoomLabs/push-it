@@ -207,6 +207,57 @@ func TestLoadWarnsOnMalformedHueLightEnv(t *testing.T) {
 	}
 }
 
+func TestSaveKeepsOnDiskLightWhenEnvOverrideIsNormalized(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("PUSH_IT_CONFIG_DIR", dir)
+	raw := `{"hue":{"light":7}}`
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(raw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PUSH_IT_HUE_LIGHT", "0")
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Hue.Light != 1 {
+		t.Fatalf("in-memory light = %d, want floored to 1", c.Hue.Light)
+	}
+	if err := c.Save(); err != nil {
+		t.Fatal(err)
+	}
+	os.Unsetenv("PUSH_IT_HUE_LIGHT")
+	c2, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c2.Hue.Light != 7 {
+		t.Fatalf("on-disk light = %d, want unchanged 7 (env override should not overwrite it)", c2.Hue.Light)
+	}
+}
+
+func TestSavePersistsCorrectedFileLight(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("PUSH_IT_CONFIG_DIR", dir)
+	raw := `{"hue":{"light":-3}}`
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(raw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Save(); err != nil {
+		t.Fatal(err)
+	}
+	c2, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c2.Hue.Light != 1 {
+		t.Fatalf("on-disk light = %d, want corrected to 1", c2.Hue.Light)
+	}
+}
+
 func TestWarningsNeverPersisted(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("PUSH_IT_CONFIG_DIR", dir)

@@ -157,6 +157,12 @@ func (c *Config) normalize() {
 		c.Warnings = append(c.Warnings, fmt.Sprintf("hue.light %d below 1; set to 1", c.Hue.Light))
 		c.Hue.Light = 1
 	}
+	// fileHue must reflect what normalize() actually corrects on-disk values
+	// to, so hueForSave's revert-to-file-value path never re-persists a
+	// bad number it just fixed.
+	if c.fileHue.Light < 1 {
+		c.fileHue.Light = 1
+	}
 }
 
 // hueForSave returns the Hue values to persist: any field that still equals
@@ -173,8 +179,18 @@ func (c *Config) hueForSave() Hue {
 		h.Key = c.fileHue.Key
 	}
 	if v := os.Getenv("PUSH_IT_HUE_LIGHT"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && h.Light == n {
-			h.Light = c.fileHue.Light
+		if n, err := strconv.Atoi(v); err == nil {
+			// normalize() floors an out-of-range Hue.Light the same way it
+			// would floor this parsed env value, so mirror that here before
+			// comparing - otherwise a normalized light no longer equals the
+			// override that produced it, and this looks like an explicit
+			// user change instead of a transient env var.
+			if n < 1 {
+				n = 1
+			}
+			if h.Light == n {
+				h.Light = c.fileHue.Light
+			}
 		}
 	}
 	return h
