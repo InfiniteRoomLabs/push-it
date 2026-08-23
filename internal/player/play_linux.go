@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"time"
 
 	"github.com/jfreymuth/pulse"
 )
@@ -71,8 +72,18 @@ func play(ctx context.Context, c *Clip, volume float64) error {
 		}
 	}()
 
+	start := time.Now()
 	stream.Start()
 	stream.Drain()
+	// Drain is a no-op if the reader hit EndOfData before it was called
+	// (short clips): sleep out the remainder so the server-side buffer
+	// finishes sounding and the caller's glow timing stays correct.
+	if remain := c.Duration() - time.Since(start); remain > 0 {
+		select {
+		case <-ctx.Done():
+		case <-time.After(remain):
+		}
+	}
 	close(done)
 
 	if err := ctx.Err(); err != nil {
