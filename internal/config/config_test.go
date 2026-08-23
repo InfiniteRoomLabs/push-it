@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -143,6 +144,90 @@ func TestSavePersistsExplicitChangeOverEnvOverride(t *testing.T) {
 	}
 	if c2.Hue.Key != "explicit" {
 		t.Fatalf("Hue.Key = %q, want explicit", c2.Hue.Key)
+	}
+}
+
+func TestLoadNormalizesOutOfRangeValues(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("PUSH_IT_CONFIG_DIR", dir)
+	raw := `{"sound":{"enabled":true,"clips_dir":"x","volume":5.5},"hue":{"enabled":false,"light":-3},"glow":{"enabled":false}}`
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(raw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Sound.Volume != 1.0 {
+		t.Fatalf("volume = %v, want clamped to 1.0", c.Sound.Volume)
+	}
+	if c.Hue.Light != 1 {
+		t.Fatalf("light = %d, want floored to 1", c.Hue.Light)
+	}
+	if len(c.Warnings) != 2 {
+		t.Fatalf("warnings = %q, want 2 entries", c.Warnings)
+	}
+}
+
+func TestLoadClampsNegativeVolume(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("PUSH_IT_CONFIG_DIR", dir)
+	raw := `{"sound":{"volume":-2}}`
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(raw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Sound.Volume != 0 {
+		t.Fatalf("volume = %v, want clamped to 0", c.Sound.Volume)
+	}
+}
+
+func TestLoadWarnsOnMalformedHueLightEnv(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("PUSH_IT_CONFIG_DIR", dir)
+	t.Setenv("PUSH_IT_HUE_LIGHT", "banana")
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Hue.Light != 1 {
+		t.Fatalf("light = %d, want default 1 (malformed env ignored)", c.Hue.Light)
+	}
+	found := false
+	for _, w := range c.Warnings {
+		if strings.Contains(w, "PUSH_IT_HUE_LIGHT") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("warnings = %q, want one mentioning PUSH_IT_HUE_LIGHT", c.Warnings)
+	}
+}
+
+func TestWarningsNeverPersisted(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("PUSH_IT_CONFIG_DIR", dir)
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.Warnings = append(c.Warnings, "scratch")
+	if err := c.Save(); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "config.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Note: a bare "arnings" substring check would false-positive here, since
+	// t.TempDir() embeds the test name ("TestWarningsNeverPersisted", which
+	// contains "arnings") in the config dir path used for clips_dir. Check
+	// for the literal JSON key instead.
+	if strings.Contains(string(data), "scratch") || strings.Contains(string(data), `"warnings"`) || strings.Contains(string(data), `"Warnings"`) {
+		t.Fatalf("warnings leaked into config.json:\n%s", data)
 	}
 }
 

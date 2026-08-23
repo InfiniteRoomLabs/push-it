@@ -4,7 +4,9 @@ package config
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -44,6 +46,11 @@ type Config struct {
 	Hue          Hue          `json:"hue"`
 	Glow         Glow         `json:"glow"`
 	InstallState InstallState `json:"install_state"`
+
+	// Warnings collects non-fatal problems found while loading (out-of-range
+	// values that were corrected, malformed env overrides). `push-it doctor`
+	// prints them. Never persisted.
+	Warnings []string `json:"-"`
 
 	dir string
 	// fileHue holds the Hue values as they stood before PUSH_IT_HUE_* env
@@ -110,6 +117,7 @@ func Load() (*Config, error) {
 	}
 	c.fileHue = c.Hue // on-disk values, before env overrides are applied below
 	applyEnv(c)
+	c.normalize()
 	return c, nil
 }
 
@@ -123,7 +131,31 @@ func applyEnv(c *Config) {
 	if v := os.Getenv("PUSH_IT_HUE_LIGHT"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
 			c.Hue.Light = n
+		} else {
+			c.Warnings = append(c.Warnings, fmt.Sprintf("PUSH_IT_HUE_LIGHT=%q is not a number; ignored", v))
 		}
+	}
+}
+
+// normalize corrects out-of-range values in place, recording a warning for
+// each correction. It never fails: the hook path must always get a usable
+// config, so bad numbers are fixed, not fatal.
+func (c *Config) normalize() {
+	v := c.Sound.Volume
+	switch {
+	case math.IsNaN(v):
+		c.Sound.Volume = 0.7
+		c.Warnings = append(c.Warnings, "sound.volume was not a number; reset to 0.7")
+	case v < 0:
+		c.Sound.Volume = 0
+		c.Warnings = append(c.Warnings, fmt.Sprintf("sound.volume %v below 0; clamped to 0", v))
+	case v > 1:
+		c.Sound.Volume = 1
+		c.Warnings = append(c.Warnings, fmt.Sprintf("sound.volume %v above 1; clamped to 1", v))
+	}
+	if c.Hue.Light < 1 {
+		c.Warnings = append(c.Warnings, fmt.Sprintf("hue.light %d below 1; set to 1", c.Hue.Light))
+		c.Hue.Light = 1
 	}
 }
 

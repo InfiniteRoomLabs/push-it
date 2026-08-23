@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Config values are normalized on load with a warning instead of being used raw: volume is clamped to 0..1 (NaN resets to 0.7), the Hue light number is floored at 1, and a malformed PUSH_IT_HUE_LIGHT is reported instead of silently ignored. push-it doctor prints the warnings.
 - Release notes: `.goreleaser.yaml` no longer sets `changelog.disable`, which made goreleaser skip loading `--release-notes` and published v0.1.0 with an empty body (patched in place).
 
 ### Changed
