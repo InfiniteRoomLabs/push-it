@@ -134,7 +134,7 @@ func renderLoop(ctx context.Context, d time.Duration) error {
 		}
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return fmt.Errorf("glow: %w", ctx.Err())
 		case now := <-tick.C:
 			if now.After(deadline) {
 				return nil

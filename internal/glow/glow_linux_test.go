@@ -296,6 +296,9 @@ func TestRunReturnsCtxErrWhenGdbusFailsAfterCancel(t *testing.T) {
 	if strings.Contains(err.Error(), "did not answer") {
 		t.Fatalf("err = %v, should not report the gdbus-failure hint for a cancelled ctx", err)
 	}
+	if !strings.HasPrefix(err.Error(), "glow: ") {
+		t.Fatalf("err = %v, want it attributed to glow (hook.go logs bare %%v)", err)
+	}
 }
 
 func TestRunStopsOnContextCancel(t *testing.T) {

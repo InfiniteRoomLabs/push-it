@@ -61,7 +61,7 @@ func runGnome(ctx context.Context, d time.Duration) error {
 		"--method", gnome.Interface+".Start", fmt.Sprintf("%.3f", d.Seconds()))
 	if err != nil {
 		if ctx.Err() != nil {
-			return ctx.Err()
+			return fmt.Errorf("glow: %w", ctx.Err())
 		}
 		return fmt.Errorf("glow: gnome extension did not answer (%s); is it installed and enabled? run `push-it install --glow` and log out/in: %w", strings.TrimSpace(string(out)), err)
 	}
@@ -70,7 +70,7 @@ func runGnome(ctx context.Context, d time.Duration) error {
 		_, _ = runCommand(context.Background(), "gdbus", "call", "--session",
 			"--dest", gnome.BusName, "--object-path", gnome.ObjectPath,
 			"--method", gnome.Interface+".Stop")
-		return ctx.Err()
+		return fmt.Errorf("glow: %w", ctx.Err())
 	case <-time.After(d):
 		return nil
 	}
