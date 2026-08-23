@@ -48,6 +48,10 @@ func runWindows(ctx context.Context, d time.Duration) error {
 }
 
 func renderLoop(ctx context.Context, d time.Duration) error {
+	// Without this the process is DPI-virtualized at >100% scaling:
+	// GetSystemMetrics returns the scaled-down resolution and DWM upscales
+	// the band, making it blurry and the wrong thickness.
+	_, _, _ = pSetProcessDPIAware.Call()
 	cx, _, _ := pGetSystemMetrics.Call(smCxScreen)
 	cy, _, _ := pGetSystemMetrics.Call(smCyScreen)
 	w, h := int(int32(cx)), int(int32(cy))

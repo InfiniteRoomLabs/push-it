@@ -51,7 +51,7 @@ func Run(ctx context.Context, sound, hue, glowOn bool, d Deps, logf func(string,
 		go func() {
 			defer wg.Done()
 			if err := d.Hue(ctx); err != nil {
-				safeLogf("hue: %v", err)
+				safeLogf("%v", err)
 			}
 		}()
 	}
@@ -60,7 +60,7 @@ func Run(ctx context.Context, sound, hue, glowOn bool, d Deps, logf func(string,
 		go func() {
 			defer wg.Done()
 			if err := d.Glow(ctx, dur); err != nil {
-				safeLogf("glow: %v", err)
+				safeLogf("%v", err)
 			}
 		}()
 	}

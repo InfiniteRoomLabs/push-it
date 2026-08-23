@@ -284,6 +284,20 @@ func TestRunReturnsErrorWhenGdbusFails(t *testing.T) {
 	}
 }
 
+func TestRunReturnsCtxErrWhenGdbusFailsAfterCancel(t *testing.T) {
+	t.Setenv("XDG_CURRENT_DESKTOP", "ubuntu:GNOME")
+	stubExec(t, []byte("Error: GDBus.Error:org.freedesktop.DBus.Error.UnknownMethod"), errors.New("exit status 1"))
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := runGnome(ctx, 10*time.Millisecond)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", err)
+	}
+	if strings.Contains(err.Error(), "did not answer") {
+		t.Fatalf("err = %v, should not report the gdbus-failure hint for a cancelled ctx", err)
+	}
+}
+
 func TestRunStopsOnContextCancel(t *testing.T) {
 	t.Setenv("XDG_CURRENT_DESKTOP", "ubuntu:GNOME")
 	stubExec(t, nil, nil)

@@ -26,6 +26,7 @@ var (
 	pGetDC               = user32.NewProc("GetDC")
 	pReleaseDC           = user32.NewProc("ReleaseDC")
 	pUnregisterClassW    = user32.NewProc("UnregisterClassW")
+	pSetProcessDPIAware  = user32.NewProc("SetProcessDPIAware")
 	// golang.org/x/sys/windows v0.47.0 exports neither GetSystemMetrics nor
 	// GetModuleHandle (only GetModuleHandleEx), so both go through the same
 	// lazy-proc mechanism as the rest of this file.
