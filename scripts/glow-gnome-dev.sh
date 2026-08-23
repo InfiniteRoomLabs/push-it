@@ -16,6 +16,7 @@ done
 mise run build
 tmp=$(mktemp -d 2>/dev/null || mktemp -d -t push-it-glow-dev)
 trap 'rm -rf "$tmp"' EXIT
+trap 'exit 130' INT HUP TERM
 uuid="pushit-glow@infiniteroomlabs.com"
 extdir="$tmp/data/gnome-shell/extensions/$uuid"
 mkdir -p "$extdir" "$tmp/config" "$tmp/confighome"
@@ -33,7 +34,10 @@ dbus-run-session -- sh -c '
   shell=$!
   sleep "$PUSH_IT_DEV_SHELL_WAIT"
   gnome-extensions enable "'"$uuid"'" || true
-  ./bin/push-it glow --duration "$PUSH_IT_DEV_GLOW_DURATION" || true
-  echo "glow-gnome-dev: glow triggered; close the nested Shell window (or Ctrl+C) to exit"
+  if ./bin/push-it glow --duration "$PUSH_IT_DEV_GLOW_DURATION"; then
+    echo "glow-gnome-dev: glow triggered; close the nested Shell window (or Ctrl+C) to exit"
+  else
+    echo "glow-gnome-dev: glow FAILED (see error above); close the nested Shell window (or Ctrl+C) to exit"
+  fi
   wait $shell
 '
