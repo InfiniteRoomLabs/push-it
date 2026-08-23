@@ -63,28 +63,33 @@ func play(ctx context.Context, c *Clip, volume float64) error {
 	}
 	defer stream.Close()
 
-	done := make(chan struct{})
+	// The library's own completion signals are unusable against PipeWire's
+	// pulse server once the reader hits EndOfData - which happens immediately
+	// for any clip that fits the server's multi-second buffer target:
+	//
+	//   - Start() blocks forever on <-p.started: the stream goes idle when
+	//     the reader is exhausted, and the client then drops the server's
+	//     Started event on its state guard. Stop() cannot unblock it, so
+	//     hook processes used to hang for days (observed symptom: garbled,
+	//     truncated audio - typically a fragment of the clip's tail - and an
+	//     immortal detached child per push).
+	//   - Drain() is a no-op in the same situation.
+	//
+	// So Start() runs in a goroutine and the wall clock - clip duration plus
+	// a small tail margin - is the completion signal. The goroutine may stay
+	// parked in Start() until the process exits; the hook child and the play
+	// CLI are short-lived, and `clips review` leaks one parked goroutine per
+	// previewed candidate for the life of the session - accepted. The recover
+	// guards the library's close(p.request): stream.Close() below can close
+	// that channel while Start() is still trying to send on it.
 	go func() {
-		select {
-		case <-ctx.Done():
-			stream.Stop()
-		case <-done:
-		}
+		defer func() { _ = recover() }()
+		stream.Start()
 	}()
-
-	start := time.Now()
-	stream.Start()
-	stream.Drain()
-	// Drain is a no-op if the reader hit EndOfData before it was called
-	// (short clips): sleep out the remainder so the server-side buffer
-	// finishes sounding and the caller's glow timing stays correct.
-	if remain := c.Duration() - time.Since(start); remain > 0 {
-		select {
-		case <-ctx.Done():
-		case <-time.After(remain):
-		}
+	select {
+	case <-ctx.Done():
+	case <-time.After(c.Duration() + 250*time.Millisecond):
 	}
-	close(done)
 
 	if err := ctx.Err(); err != nil {
 		return err
