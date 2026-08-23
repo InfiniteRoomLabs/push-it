@@ -73,6 +73,70 @@ func runGnome(ctx context.Context, d time.Duration) error {
 	}
 }
 
+// parseGVariantStrv parses gsettings' string-array text form, e.g.
+// "['a', 'b']", "[]", or "@as []", into its elements. Extension UUIDs never
+// contain quotes or commas, so a split parser is sufficient.
+func parseGVariantStrv(s string) []string {
+	s = strings.TrimSpace(s)
+	s = strings.TrimSpace(strings.TrimPrefix(s, "@as"))
+	s = strings.TrimSuffix(strings.TrimPrefix(s, "["), "]")
+	var out []string
+	for _, part := range strings.Split(s, ",") {
+		if p := strings.Trim(strings.TrimSpace(part), "'\""); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func formatGVariantStrv(items []string) string {
+	quoted := make([]string, len(items))
+	for i, it := range items {
+		quoted[i] = "'" + it + "'"
+	}
+	return "[" + strings.Join(quoted, ", ") + "]"
+}
+
+// preEnableViaGsettings adds (or, for enable=false, removes) the extension
+// UUID in org.gnome.shell enabled-extensions so the Shell picks it up on the
+// next login without a manual enable. Best-effort: returns the error for the
+// caller's message but changes nothing else on failure.
+func preEnableViaGsettings(ctx context.Context, enable bool) error {
+	if _, err := lookPath("gsettings"); err != nil {
+		return err
+	}
+	out, err := runCommand(ctx, "gsettings", "get", "org.gnome.shell", "enabled-extensions")
+	if err != nil {
+		return fmt.Errorf("gsettings get: %s: %w", strings.TrimSpace(string(out)), err)
+	}
+	list := parseGVariantStrv(string(out))
+	has := false
+	for _, e := range list {
+		if e == gnome.UUID {
+			has = true
+			break
+		}
+	}
+	switch {
+	case enable && has, !enable && !has:
+		return nil // already in the desired state
+	case enable:
+		list = append(list, gnome.UUID)
+	default:
+		kept := list[:0]
+		for _, e := range list {
+			if e != gnome.UUID {
+				kept = append(kept, e)
+			}
+		}
+		list = kept
+	}
+	if out, err := runCommand(ctx, "gsettings", "set", "org.gnome.shell", "enabled-extensions", formatGVariantStrv(list)); err != nil {
+		return fmt.Errorf("gsettings set: %s: %w", strings.TrimSpace(string(out)), err)
+	}
+	return nil
+}
+
 func installGnome(st *config.InstallState) (string, error) {
 	if st == nil {
 		return "", errors.New("glow: nil install state")
@@ -102,13 +166,16 @@ func installGnome(st *config.InstallState) (string, error) {
 		return "", fmt.Errorf("glow: extract extension: %w", err)
 	}
 	st.GnomeExtensionInstalled = true
-	if _, err := lookPath("gnome-extensions"); err != nil {
-		return fmt.Sprintf("extension extracted to %s; run `gnome-extensions enable %s`, then log out and back in (Wayland cannot hot-load extensions)", dir, gnome.UUID), nil
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	preEnabled := preEnableViaGsettings(ctx, true) == nil
+	if _, err := lookPath("gnome-extensions"); err == nil {
+		_, _ = runCommand(ctx, "gnome-extensions", "enable", gnome.UUID) // hot-load on X11; harmless no-op otherwise
 	}
-	if out, err := runCommand(context.Background(), "gnome-extensions", "enable", gnome.UUID); err != nil {
-		return fmt.Sprintf("extension extracted to %s but `gnome-extensions enable` failed (%s); log out and back in, then enable it in the Extensions app", dir, strings.TrimSpace(string(out))), nil
+	if preEnabled {
+		return fmt.Sprintf("GNOME extension installed and enabled for your next login (extracted to %s); log out and back in once - Wayland cannot hot-load extensions", dir), nil
 	}
-	return "GNOME extension installed and enabled; log out and back in once so the Shell loads it (Wayland cannot hot-load extensions)", nil
+	return fmt.Sprintf("extension extracted to %s; run `gnome-extensions enable %s`, then log out and back in (Wayland cannot hot-load extensions)", dir, gnome.UUID), nil
 }
 
 func uninstallGnome(st *config.InstallState) error {
@@ -118,8 +185,11 @@ func uninstallGnome(st *config.InstallState) error {
 	if !st.GnomeExtensionInstalled {
 		return nil
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_ = preEnableViaGsettings(ctx, false)
 	if _, err := lookPath("gnome-extensions"); err == nil {
-		_, _ = runCommand(context.Background(), "gnome-extensions", "disable", gnome.UUID)
+		_, _ = runCommand(ctx, "gnome-extensions", "disable", gnome.UUID)
 	}
 	dir, err := extensionDir()
 	if err != nil {

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -31,6 +32,122 @@ func stubExec(t *testing.T, out []byte, err error) *[]call {
 	lookPath = func(string) (string, error) { return "/usr/bin/stub", nil }
 	t.Cleanup(func() { runCommand, lookPath = origRun, origLook })
 	return &calls
+}
+
+// stubExecDispatch swaps runCommand/lookPath like stubExec, but dispatches
+// each call to fn so different commands (e.g. `gsettings get` vs `gsettings
+// set`) can return different output. It records every call.
+func stubExecDispatch(t *testing.T, fn func(name string, args []string) ([]byte, error)) *[]call {
+	t.Helper()
+	var calls []call
+	origRun, origLook := runCommand, lookPath
+	runCommand = func(_ context.Context, name string, args ...string) ([]byte, error) {
+		calls = append(calls, call{name, args})
+		return fn(name, args)
+	}
+	lookPath = func(string) (string, error) { return "/usr/bin/stub", nil }
+	t.Cleanup(func() { runCommand, lookPath = origRun, origLook })
+	return &calls
+}
+
+func TestParseFormatGVariantStrv(t *testing.T) {
+	cases := map[string][]string{
+		"['a', 'b']":    {"a", "b"},
+		"['a']":         {"a"},
+		"[]":            nil,
+		"@as []":        nil,
+		"  ['x@y.z']\n": {"x@y.z"},
+	}
+	for in, want := range cases {
+		got := parseGVariantStrv(in)
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("parseGVariantStrv(%q) = %#v, want %#v", in, got, want)
+		}
+	}
+	if got := formatGVariantStrv([]string{"a", "b"}); got != "['a', 'b']" {
+		t.Errorf("formatGVariantStrv = %q", got)
+	}
+	if got := formatGVariantStrv(nil); got != "[]" {
+		t.Errorf("formatGVariantStrv(nil) = %q", got)
+	}
+}
+
+func findSetCall(calls []call) *call {
+	for i := range calls {
+		if calls[i].name == "gsettings" && len(calls[i].args) > 0 && calls[i].args[0] == "set" {
+			return &calls[i]
+		}
+	}
+	return nil
+}
+
+func TestInstallGnomePreEnablesViaGsettings(t *testing.T) {
+	t.Setenv("XDG_CURRENT_DESKTOP", "ubuntu:GNOME")
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("PUSH_IT_CONFIG_DIR", t.TempDir())
+	calls := stubExecDispatch(t, func(name string, args []string) ([]byte, error) {
+		if name == "gsettings" && len(args) > 0 && args[0] == "get" {
+			return []byte("['other@x']\n"), nil
+		}
+		return nil, nil
+	})
+	var st config.InstallState
+	if _, err := Install(&st); err != nil {
+		t.Fatal(err)
+	}
+	set := findSetCall(*calls)
+	if set == nil {
+		t.Fatalf("no gsettings set call, calls = %+v", *calls)
+	}
+	wantList := formatGVariantStrv([]string{"other@x", gnome.UUID})
+	want := []string{"set", "org.gnome.shell", "enabled-extensions", wantList}
+	if strings.Join(set.args, " ") != strings.Join(want, " ") {
+		t.Fatalf("set args = %v, want %v", set.args, want)
+	}
+}
+
+func TestInstallGnomeGsettingsIdempotent(t *testing.T) {
+	t.Setenv("XDG_CURRENT_DESKTOP", "ubuntu:GNOME")
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("PUSH_IT_CONFIG_DIR", t.TempDir())
+	calls := stubExecDispatch(t, func(name string, args []string) ([]byte, error) {
+		if name == "gsettings" && len(args) > 0 && args[0] == "get" {
+			return []byte(formatGVariantStrv([]string{gnome.UUID}) + "\n"), nil
+		}
+		return nil, nil
+	})
+	var st config.InstallState
+	if _, err := Install(&st); err != nil {
+		t.Fatal(err)
+	}
+	if set := findSetCall(*calls); set != nil {
+		t.Fatalf("gsettings set should not be called, got %+v", *set)
+	}
+}
+
+func TestUninstallGnomeRemovesFromGsettings(t *testing.T) {
+	t.Setenv("XDG_CURRENT_DESKTOP", "ubuntu:GNOME")
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("PUSH_IT_CONFIG_DIR", t.TempDir())
+	calls := stubExecDispatch(t, func(name string, args []string) ([]byte, error) {
+		if name == "gsettings" && len(args) > 0 && args[0] == "get" {
+			return []byte(formatGVariantStrv([]string{"other@x", gnome.UUID}) + "\n"), nil
+		}
+		return nil, nil
+	})
+	st := config.InstallState{GnomeExtensionInstalled: true}
+	if err := Uninstall(&st); err != nil {
+		t.Fatal(err)
+	}
+	set := findSetCall(*calls)
+	if set == nil {
+		t.Fatalf("no gsettings set call, calls = %+v", *calls)
+	}
+	wantList := formatGVariantStrv([]string{"other@x"})
+	want := []string{"set", "org.gnome.shell", "enabled-extensions", wantList}
+	if strings.Join(set.args, " ") != strings.Join(want, " ") {
+		t.Fatalf("set args = %v, want %v", set.args, want)
+	}
 }
 
 func TestBackendIsGnome(t *testing.T) {
