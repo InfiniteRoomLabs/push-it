@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- push-it doctor now reports: config warnings, audio server reachability on Linux (not probed on macOS/Windows), whether the wired pre-push block still points at this binary, glow install state (GNOME extension present; macOS helper embedded/extracted), active NO_* kill switches, and whether the log file is writable.
+
 ### Fixed
 
 - Config values are normalized on load with a warning instead of being used raw: volume is clamped to 0..1 (NaN resets to 0.7), the Hue light number is floored at 1, and a malformed PUSH_IT_HUE_LIGHT is reported instead of silently ignored. push-it doctor prints the warnings.

@@ -3,10 +3,12 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -17,6 +19,7 @@ import (
 	"github.com/InfiniteRoomLabs/push-it/internal/glow"
 	"github.com/InfiniteRoomLabs/push-it/internal/hue"
 	"github.com/InfiniteRoomLabs/push-it/internal/installer"
+	"github.com/InfiniteRoomLabs/push-it/internal/player"
 )
 
 func init() {
@@ -24,6 +27,9 @@ func init() {
 	commands["uninstall"] = cmdUninstall
 	commands["doctor"] = cmdDoctor
 }
+
+// audioProbe is a seam so doctor tests do not need an audio server.
+var audioProbe = player.Probe
 
 type prompter struct {
 	in  *bufio.Scanner
@@ -286,6 +292,17 @@ func cmdDoctor(_ []string, _ io.Reader, stdout, stderr io.Writer) int {
 	path, _ := config.Path()
 	fmt.Fprintf(stdout, "config:  %s\n", path)
 	fmt.Fprintf(stdout, "sound:   enabled=%v volume=%.2f\n", cfg.Sound.Enabled, cfg.Sound.Volume)
+	for _, w := range cfg.Warnings {
+		fmt.Fprintf(stdout, "warn:    %s\n", w)
+	}
+	switch err := audioProbe(); {
+	case err == nil:
+		fmt.Fprintln(stdout, "audio:   ok")
+	case errors.Is(err, player.ErrNotProbed):
+		fmt.Fprintln(stdout, "audio:   not probed on this platform")
+	default:
+		fmt.Fprintf(stdout, "audio:   UNREACHABLE (%v) - pushes will be silent\n", err)
+	}
 	files, err := clips.List(cfg.Sound.ClipsDir)
 	fmt.Fprintf(stdout, "clips:   %d in %s", len(files), cfg.Sound.ClipsDir)
 	if err != nil {
@@ -306,5 +323,47 @@ func cmdDoctor(_ []string, _ io.Reader, stdout, stderr io.Writer) int {
 	fmt.Fprintln(stdout)
 	fmt.Fprintf(stdout, "glow:    enabled=%v backend=%s\n", cfg.Glow.Enabled, glow.Backend)
 	fmt.Fprintf(stdout, "hook:    hooksPath=%s setByUs=%v appendedTo=%s\n", cfg.InstallState.HooksPath, cfg.InstallState.HooksPathSetByUs, cfg.InstallState.PrePushAppendedTo)
+	if f := cfg.InstallState.PrePushAppendedTo; f != "" {
+		exe, _ := os.Executable()
+		data, err := os.ReadFile(f)
+		switch {
+		case err != nil:
+			fmt.Fprintf(stdout, "hook:    %s unreadable (%v)\n", f, err)
+		case !strings.Contains(string(data), installer.MarkerStart):
+			fmt.Fprintf(stdout, "hook:    push-it block missing from %s - re-run `push-it install`\n", f)
+		case exe != "" && !strings.Contains(string(data), filepath.ToSlash(exe)):
+			fmt.Fprintf(stdout, "hook:    block in %s points at a different binary - re-run `push-it install`\n", f)
+		default:
+			fmt.Fprintf(stdout, "hook:    block points at this binary\n")
+		}
+	}
+	switch glow.Backend {
+	case "gnome":
+		fmt.Fprintf(stdout, "glowfs:  extensionInstalled=%v\n", cfg.InstallState.GnomeExtensionInstalled)
+	case "macos":
+		helperOK := false
+		if p := cfg.InstallState.MacOSHelperPath; p != "" {
+			if _, err := os.Stat(p); err == nil {
+				helperOK = true
+			}
+		}
+		fmt.Fprintf(stdout, "glowfs:  helperEmbedded=%v helperExtracted=%v\n", glow.HelperEmbedded, helperOK)
+	}
+	var active []string
+	for _, k := range []string{"NO_PUSH_IT", "NO_SOUND", "NO_RAINBOW", "NO_GLOW"} {
+		if os.Getenv(k) != "" {
+			active = append(active, k)
+		}
+	}
+	if len(active) > 0 {
+		fmt.Fprintf(stdout, "env:     active kill switches: %s\n", strings.Join(active, " "))
+	}
+	logPath := filepath.Join(cfg.Dir(), "push-it.log")
+	if lf, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600); err != nil {
+		fmt.Fprintf(stdout, "log:     %s NOT WRITABLE (%v) - push errors will be lost\n", logPath, err)
+	} else {
+		lf.Close()
+		fmt.Fprintf(stdout, "log:     %s writable\n", logPath)
+	}
 	return 0
 }

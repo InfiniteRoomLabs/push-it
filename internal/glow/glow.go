@@ -43,3 +43,7 @@ var Uninstall = func(st *config.InstallState) error { return nil }
 
 // Available reports whether a real backend is compiled in.
 func Available() bool { return Backend != "none" }
+
+// HelperEmbedded reports whether this binary carries the macOS glow helper
+// (built with -tags glowhelper). Meaningful only when Backend == "macos".
+var HelperEmbedded bool

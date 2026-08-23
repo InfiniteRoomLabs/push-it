@@ -249,6 +249,56 @@ func TestInstallHueYesSkipsWhenUnconfigured(t *testing.T) {
 // path: `install --hue --yes` must never auto-trust a bridge certificate
 // that differs from the stored pin. It must refuse non-interactively,
 // leave the old pin on disk, and exit 1.
+func TestDoctorReportsProblems(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("PUSH_IT_CONFIG_DIR", dir)
+	t.Setenv("NO_SOUND", "1")
+	raw := `{"sound":{"enabled":true,"clips_dir":"` + filepath.ToSlash(dir) + `","volume":9},"hue":{"enabled":false,"light":1},"glow":{"enabled":false}}`
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(raw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	oldProbe := audioProbe
+	t.Cleanup(func() { audioProbe = oldProbe })
+	audioProbe = func() error { return errors.New("player: no server (stub)") }
+
+	var out, errOut strings.Builder
+	if code := run([]string{"doctor"}, strings.NewReader(""), &out, &errOut); code != 0 {
+		t.Fatalf("exit %d, stderr %q", code, errOut.String())
+	}
+	got := out.String()
+	for _, want := range []string{
+		"warn:", "sound.volume", // Task 1 warning surfaced
+		"audio:", "UNREACHABLE", // stubbed probe failure
+		"env:", "NO_SOUND", // active kill switch
+		"log:", // log writability line
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("doctor output missing %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestDoctorHookStaleness(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("PUSH_IT_CONFIG_DIR", dir)
+	hook := filepath.Join(dir, "pre-push")
+	// A hook file with our marker but pointing at a different binary path.
+	if err := os.WriteFile(hook, []byte("#!/bin/sh\n# >>> push-it >>>\n'/nonexistent/push-it' hook pre-push \"$@\" || true\n# <<< push-it <<<\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	raw := `{"install_state":{"pre_push_line_appended_to":"` + filepath.ToSlash(hook) + `"}}`
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(raw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var out, errOut strings.Builder
+	if code := run([]string{"doctor"}, strings.NewReader(""), &out, &errOut); code != 0 {
+		t.Fatalf("exit %d, stderr %q", code, errOut.String())
+	}
+	if !strings.Contains(out.String(), "different binary") {
+		t.Errorf("doctor did not flag a stale hook block:\n%s", out.String())
+	}
+}
+
 func TestInstallHueYesRefusesChangedCert(t *testing.T) {
 	tmp := isolateInstall(t)
 	cfgDir := filepath.Join(tmp, "cfg")
