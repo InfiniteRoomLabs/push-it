@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-23
+
 ### Added
 
 - mise run glow:gnome:dev: nested GNOME Shell dev loop that runs the extension from the working tree in a window - no logout per change, and the real session's extension list, dconf, and config are never touched.
@@ -68,5 +70,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Installer only appends to hooks whose shebang is an allowlisted POSIX-compatible shell (sh, bash, dash, zsh, ksh, ash, including the `env -S` form); pwsh/fish/csh/tcsh hooks are refused with instructions instead of being broken. Appending now preserves the hook's existing mode bits, only adding the owner exec bit rather than forcing group/other exec too.
 - `install.sh`: the terminal probe opens `/dev/tty` read-only so it can never create a stray file; `PUSH_IT_VERSION` accepts `0.1.0` as well as `v0.1.0`; `scripts/changelog-notes.sh` stops at the link-reference footer.
 
-[Unreleased]: https://github.com/InfiniteRoomLabs/push-it/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/InfiniteRoomLabs/push-it/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/InfiniteRoomLabs/push-it/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/InfiniteRoomLabs/push-it/releases/tag/v0.1.0
