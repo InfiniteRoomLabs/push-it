@@ -35,3 +35,7 @@ run = "gjs -m internal/glow/gnome/tests/run.js"
 
 [tasks."glow:macos:build"]
 run = "sh internal/glow/macos/build.sh"
+
+[tasks."glow:gnome:dev"]
+description = "Nested GNOME Shell running the extension from the working tree (no logout per change)"
+run = "sh scripts/glow-gnome-dev.sh"

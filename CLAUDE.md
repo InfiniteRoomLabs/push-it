@@ -38,6 +38,7 @@ docs/                 user docs (install, make-your-own-clips, hue, glow, migrat
 - `mise run lint` - gofmt, `go vet`, staticcheck (all must be clean before a commit)
 - `mise run build` - `bin/push-it`
 - `mise run glow:gnome:test` - gjs tests for the GNOME extension math
+- `mise run glow:gnome:dev` - nested GNOME Shell with the working-tree extension (no logout per change); never touches the real session
 - Cross-compile check used everywhere: `CGO_ENABLED=0 GOOS=<os> GOARCH=<arch> go build ./...` for linux/darwin/windows x amd64/arm64
 
 ## Hard rules

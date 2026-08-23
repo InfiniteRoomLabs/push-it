@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- mise run glow:gnome:dev: nested GNOME Shell dev loop that runs the extension from the working tree in a window - no logout per change, and the real session's extension list, dconf, and config are never touched.
 - push-it doctor now reports: config warnings, audio server reachability on Linux (not probed on macOS/Windows), whether the wired pre-push block still points at this binary, glow install state (GNOME extension present; macOS helper embedded/extracted), active NO_* kill switches, and whether the log file is writable.
 
 ### Fixed

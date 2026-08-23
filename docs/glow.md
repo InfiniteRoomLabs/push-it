@@ -30,3 +30,7 @@ The hook decodes the clip first, so it knows the clip's exact duration before an
 - `push-it glow --duration 3.5s` shows it on demand, on any platform with a backend compiled in.
 - `push-it doctor` shows `backend=gnome|macos|windows` (or `none` where nothing is compiled in for this platform).
 - `NO_GLOW=1 git push` skips it once.
+
+## Developing the extension
+
+GNOME 45+ loads an extension's modules once per Shell session; disable/enable never re-imports the source, so on Wayland every extension.js/glowmath.js change normally costs a logout. `mise run glow:gnome:dev` avoids that: it builds the binary, copies the extension from the working tree into a throwaway XDG_DATA_HOME, and starts a nested `gnome-shell --wayland` (in a window) with its own D-Bus session and dconf database, enables the extension there, and triggers a 3 s glow. Close the nested window and re-run after each change. Knobs: `PUSH_IT_DEV_GLOW_DURATION`, `PUSH_IT_DEV_SHELL_WAIT`, `MUTTER_DEBUG_DUMMY_MODE_SPECS`. The real session's extension list and config are never touched.
