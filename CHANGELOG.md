@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Dogfood of v0.2.0 on Linux/GNOME via `install.sh --sound --hue --glow --yes`: checksum verified, `push-it version` prints `v0.2.0 (0e232ea)`, `doctor` shows the new audio/glow/log lines, gsettings holds the extension UUID exactly once, and a real `git push` played the full clip from the start with correct timing - the first release where the celebration audio is verified by ear.
+
 ## [0.2.0] - 2026-08-23
 
 ### Added
